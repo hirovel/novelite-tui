@@ -4,9 +4,9 @@
 
 ## Novelite
 
-现有 [模块 Interface](https://github.com/hirovel/novelite/blob/main/src/core/plugins/types.ts) 将命令、侧栏、右面板、状态项、导出和格式化作为扩展点。TUI 继承这些贡献类别和写作概念，将 React/CodeMirror 渲染实现改为终端实现。
+现有 [模块 Interface](https://github.com/hirovel/novelite/blob/80a54c819bd70fac378737dbed5974fa19f0c0b3/src/core/plugins/types.ts) 将命令、侧栏、右面板、状态项、导出和格式化作为扩展点。TUI 继承这些贡献类别和写作概念，将 React/CodeMirror 渲染实现改为终端实现。
 
-[作品存储](https://github.com/hirovel/novelite/blob/main/src/core/storage/ProjectStore.ts) 仍依赖 WebView localStorage，因此 TUI 需要原生文件持久化。现有数据类型和导出行为用于定义兼容测试，不能推断旧客户端已能安全共同写入新格式。
+[作品存储](https://github.com/hirovel/novelite/blob/80a54c819bd70fac378737dbed5974fa19f0c0b3/src/core/storage/ProjectStore.ts) 仍依赖 WebView localStorage，因此 TUI 需要原生文件持久化。现有数据类型和导出行为用于定义兼容测试，不能推断旧客户端已能安全共同写入新格式。
 
 ## Micro
 
@@ -26,11 +26,11 @@
 
 [rat-text](https://docs.rs/rat-text/latest/rat_text/) 具有基于 Rope 的 TextArea、选区与折行功能，是首个编辑控件候选。[ratatui-textarea](https://github.com/ratatui/ratatui-textarea) 是另一个对照候选。最终选型以中文长段落、字素定位、撤销、IME 和可见区域性能验证为依据；不因为演示能输入几行文本就锁定实现。
 
-## kitty
+## 终端能力与 kitty 增强
 
 [键盘协议](https://sw.kovidgoyal.net/kitty/keyboard-protocol/)、[配置](https://sw.kovidgoyal.net/kitty/conf/) 和 [默认快捷键](https://sw.kovidgoyal.net/kitty/overview/) 用于定义按键协商、冲突处理和应用专用配置。[Crossterm 事件接口](https://docs.rs/crossterm/latest/crossterm/event/index.html) 提供键盘协议增强相关命令。
 
-协议支持不等于真实输入法行为已经验证。需要在实际 Mac 上测试拼音候选、组合输入、按键重复和退出恢复。
+kitty 协议是可选增强，不是运行前提。协议支持不等于真实输入法已验证；在本机可用终端检查拼音候选、组合输入、按键重复和退出恢复，其他平台保留待验证记录。
 
 ## 参考策略
 
