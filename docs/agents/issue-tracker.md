@@ -7,3 +7,9 @@
 PRs as a request surface: no.
 任务拆分须等进入 to-tickets 阶段，依赖关系显式记录。
 仓库 `docs/spec.md` 保存规格文本，Issue 正文与其同步；双方注明对应提交。
+
+## 当前规格
+
+- [Issue #1](https://github.com/hirovel/novelite-tui/issues/1)：portable modular Novelite TUI。
+- 规格文本：`docs/spec.md`，发布时提交 `e590a017408249e19b6ab06c721891a1b58a9cf9`。
+- 该 Issue 是规格入口，尚未执行 to-tickets 或实现。
