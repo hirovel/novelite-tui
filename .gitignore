@@ -1,0 +1,8 @@
+/target/
+/dist/
+/scratch/
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
