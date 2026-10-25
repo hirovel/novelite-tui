@@ -1,6 +1,7 @@
 /target/
 /dist/
 /scratch/
+/.scratch/novelite-tui/
 .DS_Store
 *.log
 .env

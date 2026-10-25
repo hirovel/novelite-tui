@@ -1,15 +1,7 @@
 # Issue tracker
 
-本仓库规格和任务记录在 `hirovel/novelite-tui` 的 GitHub Issues，使用 gh CLI。
-发布前先查重；更新已有规格时编辑原 Issue，避免复制。
-多行正文保存到 UTF-8 文件，以 `--body-file` 传入。
-规格使用 `ready-for-agent` 标签；该标签不代表用户授权立即启动实现。
-PRs as a request surface: no.
-任务拆分须等进入 to-tickets 阶段，依赖关系显式记录。
-仓库 `docs/spec.md` 保存规格文本，Issue 正文与其同步；双方注明对应提交。
+开发任务、进度和验证证据只保存在本地 `.scratch/novelite-tui/`，由 `.gitignore` 排除。不得使用 `git add -f` 提交，也不得复制到公开文档、Issue、评论或 PR 描述。
 
-## 当前规格
+任务清单维护依赖和执行状态；只有依赖完成且已获用户授权的任务才进入实施。规格以 `docs/spec.md` 及关联设计文档为准，任务文件不替代产品规格。
 
-- [Issue #1](https://github.com/hirovel/novelite-tui/issues/1)：portable modular Novelite TUI。
-- 规格文本：`docs/spec.md`，发布时提交 `e590a017408249e19b6ab06c721891a1b58a9cf9`。
-- 该 Issue 是规格入口，尚未执行 to-tickets 或实现。
+内部开发任务不通过 PR 请求或跟踪。外部缺陷可以使用 GitHub Issues；私人开发任务不通过公开 Issue 跟踪。公开的产品代码、行为测试和用户文档与私人执行记录分开管理。

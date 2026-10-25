@@ -1,6 +1,6 @@
 # 正式版功能对齐
 
-基准为桌面版 [v1.0.4](https://github.com/hirovel/novelite/releases/tag/v1.0.4)，源码提交 `80a54c819bd70fac378737dbed5974fa19f0c0b3`。下表是 TUI 首版目标，所有 TUI 条目尚未实现或验证；“对齐”指写作能力，不要求复制桌面视觉。
+基准为桌面版 [v1.0.4](https://github.com/hirovel/novelite/releases/tag/v1.0.4)，源码提交 `80a54c819bd70fac378737dbed5974fa19f0c0b3`。下表是 TUI 首版的范围与验收要求，不作为完成状态清单；“对齐”指写作能力，不要求复制桌面视觉。实际验证结果单独记录。
 
 | 正式版能力 | TUI 决策 | 验收要点 |
 | --- | --- | --- |
