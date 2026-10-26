@@ -2,11 +2,11 @@
 
 在终端里安静地写作。延续 [Novelite](https://github.com/hirovel/novelite) 的章节组织与写作能力，专注于中文长文、干净排版和可靠保存。
 
-**当前为预览版，首个 Apple Silicon Homebrew 包正在准备发布验证。** 包含作品与卷章管理、双窗格编辑、大纲与目标、搜索替换、历史恢复、中文排版、导入导出及可选专注模式。真实输入法、各终端显示与长文写作手感仍需实际验收。
+**当前为预览版，提供 macOS Apple Silicon Homebrew 安装包。** 包含作品与卷章管理、双窗格编辑、大纲与目标、搜索替换、历史恢复、中文排版、导入导出及可选专注模式。真实输入法、各终端显示与长文写作手感仍需实际验收。
 
 ## macOS 安装与更新
 
-面向 Apple Silicon（M1 及后续芯片）。安装入口将在首次 Release 和 Homebrew 安装验证完成后启用：
+面向 Apple Silicon（M1 及后续芯片）：
 
 ```sh
 brew install hirovel/tap/novelite-tui
