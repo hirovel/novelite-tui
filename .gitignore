@@ -1,5 +1,6 @@
 /target/
 /dist/
+/scripts/__pycache__/
 /scratch/
 /.scratch/novelite-tui/
 .DS_Store

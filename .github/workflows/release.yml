@@ -1,0 +1,110 @@
+name: Apple Silicon release
+
+on:
+  push:
+    tags: ["v[0-9]*.[0-9]*.[0-9]*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag, for example v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "13.0"
+      REQUESTED_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify release tag and native architecture
+        id: version
+        run: |
+          test "$(uname -m)" = arm64
+          python3 scripts/release.py check-version --tag "$REQUESTED_TAG" >> "$GITHUB_OUTPUT"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$REQUESTED_TAG^{commit}")"
+      - name: Build locked release
+        run: |
+          rustup toolchain install 1.97.0 --profile minimal
+          rustup run 1.97.0 cargo build --locked --release --target aarch64-apple-darwin
+      - name: Sign and verify the executable
+        run: |
+          binary=target/aarch64-apple-darwin/release/novelite-tui
+          codesign --force --sign - --timestamp=none "$binary"
+          codesign --verify --strict "$binary"
+          "$binary" --version
+          "$binary" --help
+          otool -L "$binary"
+          python3 scripts/release.py package --tag "$REQUESTED_TAG" --binary "$binary" --output dist
+      - name: Install and test the package with Homebrew
+        run: |
+          tap="$RUNNER_TEMP/homebrew-smoke"
+          mkdir -p "$tap/Formula"
+          python3 scripts/release.py smoke-formula --tag "$REQUESTED_TAG" \
+            --archive "dist/novelite-tui-$REQUESTED_TAG-aarch64-apple-darwin.tar.gz" \
+            --output "$tap/Formula/novelite-tui.rb"
+          git -C "$tap" init
+          git -C "$tap" add Formula
+          git -C "$tap" -c user.name='Novelite release check' -c user.email='release@localhost' \
+            commit -m 'Prepare package installation check'
+          brew tap hirovel/release-smoke "$tap"
+          brew install hirovel/release-smoke/novelite-tui
+          brew test hirovel/release-smoke/novelite-tui
+          codesign --verify --strict "$(brew --prefix hirovel/release-smoke/novelite-tui)/bin/novelite-tui"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: apple-silicon-release
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        with:
+          name: apple-silicon-release
+          path: dist
+      - name: Publish complete release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          test "$GH_REPO" = hirovel/novelite-tui
+          cd dist
+          sha256sum --check SHA256SUMS
+          status=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>/dev/null || true)
+          if [ "$status" = false ]; then
+            echo "This version is already public; publish a new version instead of replacing it."
+            exit 1
+          fi
+          if [ "$status" = true ]; then
+            gh release upload "$RELEASE_TAG" \
+              "novelite-tui-$RELEASE_TAG-aarch64-apple-darwin.tar.gz" SHA256SUMS novelite-tui.rb --clobber
+          else
+            gh release create "$RELEASE_TAG" \
+              "novelite-tui-$RELEASE_TAG-aarch64-apple-darwin.tar.gz" SHA256SUMS novelite-tui.rb \
+              --verify-tag --draft --title "Novelite TUI $RELEASE_TAG" \
+              --notes 'Focused terminal writing for Apple Silicon. Install and update instructions: https://github.com/hirovel/novelite-tui#readme'
+          fi
+          gh release edit "$RELEASE_TAG" --draft=false --latest

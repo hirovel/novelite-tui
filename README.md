@@ -1,8 +1,25 @@
 # Novelite TUI
 
-终端中的模块化小说写作应用。延续 [Novelite](https://github.com/hirovel/novelite) 的写作能力，优先做好中文长文编辑、界面体验、响应速度和可靠保存。
+在终端里安静地写作。延续 [Novelite](https://github.com/hirovel/novelite) 的章节组织与写作能力，专注于中文长文、干净排版和可靠保存。
 
-**当前为本地预览版，尚无发行包。** 包含作品与卷章管理、双窗格编辑、大纲与目标、搜索替换、历史恢复、中文排版、导入导出及可选专注模式。真实输入法、各终端显示与长文写作手感仍需实际验收。
+**当前为预览版，首个 Apple Silicon Homebrew 包正在准备发布验证。** 包含作品与卷章管理、双窗格编辑、大纲与目标、搜索替换、历史恢复、中文排版、导入导出及可选专注模式。真实输入法、各终端显示与长文写作手感仍需实际验收。
+
+## macOS 安装与更新
+
+面向 Apple Silicon（M1 及后续芯片）。安装入口将在首次 Release 和 Homebrew 安装验证完成后启用：
+
+```sh
+brew install hirovel/tap/novelite-tui
+novelite-tui
+```
+
+更新由 Homebrew 管理，文稿与个人偏好保留：
+
+```sh
+brew update && brew upgrade novelite-tui
+```
+
+正文居中，工具按需展开；设置 → 写作 → 专注写作可以临时收起周边界面。字体、光标和背景沿用终端偏好。
 
 ## 本地运行
 
@@ -43,7 +60,7 @@ cargo install --path . --locked
 novelite-tui ~/Documents/小说.md
 ```
 
-不需要修改 kitty 的字体或全局键位。F 键被系统占用时，Ctrl+P 和可点击入口仍可打开操作；粘贴可使用终端原生入口。当前自动化验证在 Windows 本地完成，macOS 的中文输入法、系统剪贴板和最终显示仍待实机验收；尚无 Homebrew 安装包。
+不需要修改 kitty 的字体或全局键位。F 键被系统占用时，Ctrl+P 和可点击入口仍可打开操作；粘贴可使用终端原生入口。macOS 的中文输入法、系统剪贴板和最终显示仍需实际终端验收；包构建与安装检查不能替代写作手感验证。
 
 ## 开始写作
 
@@ -140,9 +157,9 @@ cargo clippy --locked --all-targets -- -D warnings
 - [本地验收标准](docs/acceptance.md)：百万字作品、十万字章节、双窗格。
 - [领域词汇](CONTEXT.md)与[参考项目](docs/references.md)。
 
-技术路线为 Rust、Ratatui、Crossterm，编辑缓冲策略随本地验证确定。测试以工作区会话的用户可见行为为入口，只安排本地验证，其他环境保持待验证。
+技术路线为 Rust、Ratatui、Crossterm，编辑缓冲策略随本地验证确定。编辑测试以工作区会话的用户可见行为为入口；Apple Silicon 包另经构建与 Homebrew 安装检查，实际终端体验仍需验收。
 
-TUI 使用独立仓库、版本和 GitHub Releases。未来与桌面版共享作品格式、交替编辑，桌面端适配另行进行。Mac 发行计划采用 Homebrew Formula，实际发行平台和安装命令待发行阶段公布。
+TUI 使用独立仓库、版本和 GitHub Releases。未来与桌面版共享作品格式、交替编辑，桌面端适配另行进行。Apple Silicon 包采用独立 Homebrew tap，发行与维护见 [发布说明](docs/releases.md)。
 
 许可沿用 Novelite 的 [GNU GPL v3](LICENSE)。第三方代码引入时保留各自许可和归属说明。
 
