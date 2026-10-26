@@ -4,7 +4,7 @@ use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct LineEditor {
     // None starts at the end, including values prefilled before first use.
     cursor: Option<usize>,

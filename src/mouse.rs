@@ -50,7 +50,7 @@ impl Workspace {
             }
             return Ok(());
         }
-        if self.mouse.enabled && self.recent_mouse(event)? {
+        if self.mouse.enabled && self.navigation_tool_mouse(event)? {
             self.cancel_mouse_drag();
             return Ok(());
         }

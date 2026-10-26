@@ -50,18 +50,35 @@ pub(super) fn draw(
             });
         frame.render_widget(Block::default().style(theme.base), panel.area);
         frame.render_widget(block, panel.area);
+        let query = if panel.focused {
+            content.query_row.and_then(|row| {
+                work.navigator.as_mut().map(|navigator| {
+                    let (line, column) = navigator.query_view(inner.width.saturating_sub(2));
+                    (row, line, column)
+                })
+            })
+        } else {
+            None
+        };
         let mut lines: Vec<Line> = content
             .headers
             .iter()
             .enumerate()
             .map(|(i, s)| {
-                Line::from(safe_label(s)).style(
-                    if panel.id == crate::ModuleId::Planning && i == 1 {
-                        theme.accent
+                Line::from(
+                    if let Some((row, line, _)) = &query
+                        && *row == i
+                    {
+                        format!("› {line}")
                     } else {
-                        theme.muted
+                        safe_label(s)
                     },
                 )
+                .style(if panel.id == crate::ModuleId::Planning && i == 1 {
+                    theme.accent
+                } else {
+                    theme.muted
+                })
             })
             .collect();
         for (offset, text) in content.entries.iter().enumerate() {
@@ -80,7 +97,13 @@ pub(super) fn draw(
         }
         frame.render_widget(Paragraph::new(lines), inner);
         if panel.focused && inner.width > 0 && inner.height > 0 {
-            frame.set_cursor_position((inner.x, inner.y));
+            if let Some((row, _, column)) =
+                query.filter(|(row, _, _)| *row < inner.height as usize && inner.width > 2)
+            {
+                frame.set_cursor_position((inner.x + 2 + column, inner.y + row as u16));
+            } else {
+                frame.set_cursor_position((inner.x, inner.y));
+            }
         }
     }
 }

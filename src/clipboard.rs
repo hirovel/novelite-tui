@@ -36,7 +36,7 @@ enum Operation {
     Paste,
 }
 struct Pending {
-    modal_generation: u64,
+    edit_generation: u64,
     document: u64,
     operation: Operation,
     path: PathBuf,
@@ -129,21 +129,13 @@ impl Workspace {
             .unwrap_or(&self.document)
     }
     fn clipboard_editor(&self) -> io::Result<()> {
-        if self.prompt.as_ref().is_some_and(|p| p.editor.is_some()) {
-            return Ok(());
-        }
-        if self.design_ui.open
-            || self.prompt.is_some()
-            || self.import_active()
-            || self.navigator.is_some()
-            || self.history_preview.is_some()
-            || self.book_search_focused()
-        {
+        if self.edit_target() == crate::editing::EditTarget::Tool {
             return Err(io::Error::other("请先返回正文再操作文稿剪贴板"));
         }
         Ok(())
     }
     fn system_clipboard(&mut self, operation: Operation) -> io::Result<Outcome> {
+        self.sync_edit_focus();
         self.clipboard_editor()?;
         if self.clipboard_busy() {
             return Err(io::Error::other("剪贴板操作尚未完成，可继续编辑"));
@@ -167,7 +159,7 @@ impl Workspace {
             .send(text)
             .map_err(io::Error::other)?;
         self.clipboard.pending = Some(Pending {
-            modal_generation: self.design_ui.modal_generation,
+            edit_generation: self.edit_focus.generation(),
             document: self.clipboard_document().instance,
             operation,
             path: self.path.clone(),
@@ -179,6 +171,7 @@ impl Workspace {
         Ok(Outcome::Continue)
     }
     pub(crate) fn poll_clipboard(&mut self) -> io::Result<()> {
+        self.sync_edit_focus();
         if !self.clipboard_busy() {
             return Ok(());
         }
@@ -194,7 +187,7 @@ impl Workspace {
             self.clipboard.report("已丢弃取消的剪贴板结果，正文未改变");
             return Ok(());
         }
-        let unchanged = self.design_ui.modal_generation == pending.modal_generation
+        let unchanged = self.edit_focus.generation() == pending.edit_generation
             && self.clipboard_document().instance == pending.document
             && self.path == pending.path
             && self.clipboard_document().revision == pending.revision

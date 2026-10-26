@@ -28,6 +28,7 @@ mod heading;
 mod markdown;
 mod project_import;
 pub use importing::{ImportChapter, ImportEncoding, ImportPreview};
+mod editing;
 mod input;
 mod modules;
 mod mouse;
@@ -43,8 +44,8 @@ mod start;
 mod user_path;
 pub use start::{StartOutcome, StartScreen};
 mod navigation;
+mod navigation_ui;
 mod navigator;
-mod recent_ui;
 pub use library::{RecentKind, RecentProject};
 pub use navigator::{Navigation, NavigationEntry};
 mod pairing;
@@ -124,13 +125,14 @@ pub struct Workspace {
     prompt: Option<Prompt>,
     library: library::Library,
     navigator: Option<navigator::Navigator>,
-    recent_ui: recent_ui::RecentUi,
+    navigation_ui: navigation_ui::NavigationUi,
     selected_volume: Option<String>,
     history: history::History,
     history_preview: Option<history_ui::Preview>,
     external: external::External,
     mouse: mouse::Mouse,
     clipboard: clipboard::ClipboardState,
+    edit_focus: editing::EditFocus,
     panes: panes::Panes,
     search: Option<search::Search>,
     book_searching: book_search::BookSearching,
@@ -183,6 +185,7 @@ impl Workspace {
             external: external::External::default(),
             mouse: mouse::Mouse::default(),
             clipboard: clipboard::ClipboardState::default(),
+            edit_focus: Default::default(),
             panes: panes::Panes::default(),
             search: None,
             book_searching: book_search::BookSearching::default(),
@@ -194,7 +197,7 @@ impl Workspace {
             prompt: None,
             library: library::Library::default(),
             navigator: None,
-            recent_ui: Default::default(),
+            navigation_ui: Default::default(),
             selected_volume: None,
         }
     }
@@ -297,6 +300,15 @@ impl Workspace {
     /// Decode terminal input through the same session used by semantic commands.
     pub fn handle_event(&mut self, event: crossterm::event::Event) -> io::Result<Option<Outcome>> {
         let scene = self.design_scene();
+        // Tool hits belong to one painted frame. Keyboard, paste and resize can
+        // replace or reflow that tool before the next mouse event arrives.
+        if !matches!(&event, crossterm::event::Event::Mouse(_)) {
+            self.navigation_ui.clear_hits();
+        }
+        if matches!(&event, crossterm::event::Event::Resize(_, _)) {
+            self.invalidate_editor_geometry();
+        }
+        self.sync_edit_focus();
         let palette_was_open = self.commands.palette_selection().is_some();
         let immediate = matches!(
             &event,
@@ -310,6 +322,7 @@ impl Workspace {
                 })
         );
         let result = self.handle_event_inner(event);
+        self.sync_edit_focus();
         if immediate && palette_was_open && self.commands.palette_selection().is_some() {
             self.cancel_design_transition();
         } else if self.design_scene() != scene {
@@ -555,9 +568,12 @@ impl Workspace {
         self.commands.register(command)
     }
     pub fn execute_command(&mut self, id: &str) -> io::Result<Outcome> {
+        self.navigation_ui.clear_hits();
         self.dismiss_export_notice();
+        self.sync_edit_focus();
         self.guard_import_command(id)?;
         let result = (self.commands.get(id)?)(self);
+        self.sync_edit_focus();
         if result.is_ok()
             && !matches!(
                 id,

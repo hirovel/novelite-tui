@@ -84,7 +84,7 @@ pub(crate) fn contributions() -> Vec<Contribution> {
                 focus: |w| w.show_navigation(Kind::Chapters),
                 select: |w, index| {
                     if let Some(n) = &mut w.navigator {
-                        n.selected = index;
+                        n.select(index);
                     }
                 },
                 event: Workspace::navigation_event,
@@ -104,7 +104,7 @@ pub(crate) fn contributions() -> Vec<Contribution> {
                 focus: |w| w.show_navigation(Kind::Planning),
                 select: |w, index| {
                     if let Some(n) = &mut w.navigator {
-                        n.selected = index;
+                        n.select(index);
                     }
                 },
                 event: Workspace::navigation_event,
@@ -172,6 +172,8 @@ impl Default for Modules {
 
 pub struct ModulePanel {
     pub title: String,
+    /// Header row reserved for the focused navigator's single-line query.
+    pub query_row: Option<usize>,
     pub headers: Vec<String>,
     pub entries: Vec<String>,
     pub selected: usize,
@@ -179,21 +181,22 @@ pub struct ModulePanel {
 }
 
 fn chapter_panel(work: &Workspace, height: usize) -> ModulePanel {
-    let default = crate::navigator::Navigator {
-        kind: Kind::Chapters,
-        query: String::new(),
-        selected: 0,
-    };
-    let nav = work.navigation_for(
-        work.navigator
-            .as_ref()
-            .filter(|n| matches!(n.kind, Kind::Chapters))
-            .unwrap_or(&default),
-    );
+    let default = crate::navigator::Navigator::new(Kind::Chapters);
+    let navigator = work
+        .navigator
+        .as_ref()
+        .filter(|n| matches!(n.kind, Kind::Chapters))
+        .unwrap_or(&default);
+    let nav = work.navigation_for(navigator);
     let capacity = height.saturating_sub(1);
-    let first = nav.selected.saturating_sub(capacity.saturating_sub(1));
+    let first = navigator.visible_rows(nav.entries.len(), capacity).start;
     ModulePanel {
         title: "章节 · Enter 打开 · Esc 返回".into(),
+        query_row: work
+            .navigator
+            .as_ref()
+            .filter(|n| matches!(n.kind, Kind::Chapters))
+            .map(|_| 0),
         headers: vec![if nav.query.is_empty() {
             "卷与章节".into()
         } else {
@@ -213,6 +216,7 @@ fn chapter_panel(work: &Workspace, height: usize) -> ModulePanel {
 fn search_panel(work: &Workspace, height: usize) -> ModulePanel {
     let mut panel = ModulePanel {
         title: "全书搜索 · Enter 跳转 · Esc 关闭".into(),
+        query_row: None,
         headers: vec!["F1 → search-book 开始搜索".into()],
         entries: vec![],
         selected: 0,
@@ -296,6 +300,7 @@ impl Workspace {
             .map(|b| (b.panel)(self, height))
             .unwrap_or_else(|| ModulePanel {
                 title: String::new(),
+                query_row: None,
                 headers: vec![],
                 entries: vec![],
                 selected: 0,

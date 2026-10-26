@@ -36,12 +36,22 @@ impl Workspace {
         }
     }
     pub(crate) fn open_history_preview(&mut self, id: &str) -> io::Result<()> {
+        self.navigation_ui.clear_hits();
+        self.invalidate_editor_geometry();
         let text = self.preview_snapshot(id)?;
         self.history_preview = Some(Preview {
             id: id.into(),
             document: Document::new(text, false),
         });
         Ok(())
+    }
+    pub(crate) fn history_preview_id(&self) -> Option<&str> {
+        self.history_preview.as_ref().map(|p| p.id.as_str())
+    }
+    pub(crate) fn scroll_history_preview(&mut self, delta: isize, height: u16) {
+        if let Some(preview) = &mut self.history_preview {
+            preview.document.scroll(delta, height);
+        }
     }
     pub fn history_preview(&mut self, width: u16, height: u16) -> Option<View> {
         self.history_preview
@@ -53,11 +63,17 @@ impl Workspace {
             && key.kind != KeyEventKind::Release
         {
             match key.code {
-                KeyCode::Esc => self.history_preview = None,
+                KeyCode::Esc => {
+                    self.history_preview = None;
+                    self.navigation_ui.clear_hits();
+                    self.invalidate_editor_geometry();
+                }
                 KeyCode::Enter => {
                     let id = self.history_preview.as_ref().unwrap().id.clone();
                     self.restore_snapshot(&id)?;
                     self.history_preview = None;
+                    self.navigation_ui.clear_hits();
+                    self.invalidate_editor_geometry();
                 }
                 KeyCode::Up
                 | KeyCode::Down

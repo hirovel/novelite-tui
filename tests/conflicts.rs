@@ -285,7 +285,10 @@ fn conflict_commands_default_to_cancel_and_require_typed_overwrite_confirmation(
     work.handle_event(enter.clone()).unwrap();
     assert_eq!(fs::read_to_string(work.path()).unwrap(), "保留外部");
     work.execute_command("conflicts").unwrap();
-    work.handle_event(Event::Paste("明确覆盖".into())).unwrap();
+    for _ in 0..3 {
+        work.handle_event(Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)))
+            .unwrap();
+    }
     work.handle_event(enter.clone()).unwrap();
     assert!(work.prompt().unwrap().title.contains("覆盖"));
     work.handle_event(Event::Paste("覆盖".into())).unwrap();

@@ -197,17 +197,13 @@ pub(crate) fn commands() -> Vec<crate::Command> {
 }
 pub(crate) fn panel(work: &Workspace, height: usize) -> crate::ModulePanel {
     use crate::navigator::{Kind, Navigator};
-    let default = Navigator {
-        kind: Kind::Planning,
-        query: String::new(),
-        selected: 0,
-    };
-    let nav = work.navigation_for(
-        work.navigator
-            .as_ref()
-            .filter(|n| matches!(n.kind, Kind::Planning))
-            .unwrap_or(&default),
-    );
+    let default = Navigator::new(Kind::Planning);
+    let navigator = work
+        .navigator
+        .as_ref()
+        .filter(|n| matches!(n.kind, Kind::Planning))
+        .unwrap_or(&default);
+    let nav = work.navigation_for(navigator);
     let p = work.word_progress();
     let mut headers = vec![
         "本章目标".into(),
@@ -226,7 +222,20 @@ pub(crate) fn panel(work: &Workspace, height: usize) -> crate::ModulePanel {
             ratio
         ));
     }
-    headers.extend([String::new(), "章节大纲".into()]);
+    // Reuse the existing separator row so focusing the query cannot move actions.
+    let query_row = work
+        .navigator
+        .as_ref()
+        .filter(|n| matches!(n.kind, Kind::Planning))
+        .map(|_| headers.len());
+    headers.extend([
+        if query_row.is_some() {
+            format!("筛选  {}", nav.query)
+        } else {
+            String::new()
+        },
+        "章节大纲".into(),
+    ]);
     let width = work
         .modules
         .layout
@@ -263,9 +272,10 @@ pub(crate) fn panel(work: &Workspace, height: usize) -> crate::ModulePanel {
         },
     ]);
     let capacity = height.saturating_sub(headers.len());
-    let first = nav.selected.saturating_sub(capacity.saturating_sub(1));
+    let first = navigator.visible_rows(nav.entries.len(), capacity).start;
     crate::ModulePanel {
         title: "大纲与目标 · Enter 编辑 · Esc 返回".into(),
+        query_row,
         headers,
         entries: nav
             .entries

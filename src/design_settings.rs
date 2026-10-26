@@ -17,7 +17,6 @@ pub(crate) struct DesignUi {
     scroll: usize,
     pub palette_scroll: usize,
     pub revision: u64,
-    pub modal_generation: u64,
     can_apply: bool,
     hits: Vec<(Rect, Hit)>,
     command_hit: Option<Rect>,
@@ -77,7 +76,7 @@ fn toggle_row(
 }
 impl Workspace {
     pub(crate) fn begin_design_frame(&mut self) {
-        self.recent_ui.clear_hits();
+        self.navigation_ui.clear_hits();
         self.design_ui.command_hit = None;
         self.design_ui.zen_exit_hit = None;
         self.design_ui.heading_hit = None;
@@ -96,7 +95,6 @@ impl Workspace {
         self.commands.close_palette();
         self.cancel_mouse_drag();
         self.design_ui.open = true;
-        self.design_ui.modal_generation += 1;
         self.design_ui.revision += 1;
         Ok(Outcome::Continue)
     }
@@ -410,7 +408,6 @@ impl Workspace {
                 return self.open_paragraph_style().map(Some);
             } else if self.prompt.is_none()
                 && !self.import_active()
-                && self.history_preview.is_none()
                 && self.design_ui.command_hit.is_some_and(|r| r.contains(pos))
             {
                 return self.execute_command("design-commands").map(Some);

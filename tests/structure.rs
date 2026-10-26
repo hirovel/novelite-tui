@@ -40,7 +40,9 @@ fn structure_commands_offer_destination_and_explicit_recycle_confirmation() {
     enter(&mut work); // default is cancellation
     assert!(work.project().unwrap().recycle_bin.is_empty());
     work.execute_command("recycle-chapter").unwrap();
-    choose(&mut work, "移入回收区");
+    work.handle_event(Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)))
+        .unwrap();
+    enter(&mut work);
     assert_eq!(work.project().unwrap().recycle_bin.len(), 1);
     work.execute_command("recycle-bin").unwrap();
     choose(&mut work, "第一章");
@@ -61,7 +63,9 @@ fn structure_commands_offer_destination_and_explicit_recycle_confirmation() {
             .iter()
             .any(|e| e.label.contains("尾卷") && e.label.contains("2 章"))
     );
-    choose(&mut work, "移入回收区");
+    work.handle_event(Event::Key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE)))
+        .unwrap();
+    enter(&mut work);
     assert!(
         work.project()
             .unwrap()

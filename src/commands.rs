@@ -99,17 +99,17 @@ impl Default for Commands {
             Command {
                 id: "undo".into(),
                 title: "撤销".into(),
-                run: |work| work.dispatch(Action::Undo),
+                run: |work| work.run_edit_command(Action::Undo),
             },
             Command {
                 id: "redo".into(),
                 title: "重做".into(),
-                run: |work| work.dispatch(Action::Redo),
+                run: |work| work.run_edit_command(Action::Redo),
             },
             Command {
                 id: "select-all".into(),
                 title: "全选文稿".into(),
-                run: |work| work.dispatch(Action::SelectAll),
+                run: |work| work.run_edit_command(Action::SelectAll),
             },
             Command {
                 id: "reset-keys".into(),

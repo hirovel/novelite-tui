@@ -1,7 +1,13 @@
+use crate::line_editor::LineEditor;
 use crate::{Command, Outcome, Workspace, prompt::Purpose};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
+use std::{
+    cell::Cell,
+    ops::Range,
+    sync::atomic::{AtomicU64, Ordering},
+};
+static NEXT_NAVIGATOR: AtomicU64 = AtomicU64::new(1);
 use std::{io, path::PathBuf};
-use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Clone)]
 pub(crate) enum Kind {
@@ -19,12 +25,95 @@ pub(crate) enum Kind {
 #[derive(Clone)]
 pub(crate) struct Navigator {
     pub(crate) kind: Kind,
-    pub(crate) query: String,
-    pub(crate) selected: usize,
+    instance: u64,
+    revision: u64,
+    query: String,
+    editor: LineEditor,
+    selected: usize,
+    // First visible result and last rendered row capacity.
+    viewport: Cell<(usize, usize)>,
+}
+enum NavigationAction {
+    None,
+    Cancel,
+    Activate,
 }
 impl Navigator {
+    pub(crate) fn new(kind: Kind) -> Self {
+        Self {
+            kind,
+            instance: NEXT_NAVIGATOR.fetch_add(1, Ordering::Relaxed),
+            revision: 0,
+            query: String::new(),
+            editor: LineEditor::default(),
+            selected: 0,
+            viewport: Cell::new((0, 1)),
+        }
+    }
     pub(crate) fn is_history(&self) -> bool {
         matches!(self.kind, Kind::History { .. })
+    }
+    pub(crate) fn stamp(&self) -> (u64, u64) {
+        (self.instance, self.revision)
+    }
+    pub(crate) fn select(&mut self, index: usize) {
+        if self.selected != index {
+            self.revision += 1;
+        }
+        self.selected = index;
+    }
+    pub(crate) fn filterable(&self) -> bool {
+        !matches!(
+            self.kind,
+            Kind::Conflicts
+                | Kind::Structure(
+                    crate::structure_ui::Flow::RecycleChapter(_)
+                        | crate::structure_ui::Flow::RecycleVolume(_)
+                )
+        )
+    }
+    pub(crate) fn query_view(&mut self, width: u16) -> (String, u16) {
+        self.editor.view(&self.query, width)
+    }
+    pub(crate) fn visible_rows(&self, count: usize, capacity: usize) -> Range<usize> {
+        let (mut first, _) = self.viewport.get();
+        let rows = crate::render::surface::visible_rows(count, self.selected, capacity, &mut first);
+        self.viewport.set((first, capacity));
+        rows
+    }
+    fn edit_query(&mut self, event: &Event) {
+        if self.filterable() && self.editor.event(&mut self.query, event) {
+            self.selected = 0;
+            self.revision += 1;
+            self.viewport.set((0, self.viewport.get().1));
+        }
+    }
+    fn event(&mut self, event: &Event, count: usize) -> NavigationAction {
+        self.select(self.selected.min(count.saturating_sub(1)));
+        if let Event::Key(key) = event {
+            if key.kind == KeyEventKind::Release {
+                return NavigationAction::None;
+            }
+            let page = self.viewport.get().1.max(1);
+            match key.code {
+                KeyCode::Esc => return NavigationAction::Cancel,
+                KeyCode::Enter => return NavigationAction::Activate,
+                KeyCode::Up => self.select(self.selected.saturating_sub(1)),
+                KeyCode::Down => {
+                    self.select(self.selected.saturating_add(1).min(count.saturating_sub(1)))
+                }
+                KeyCode::PageUp => self.select(self.selected.saturating_sub(page)),
+                KeyCode::PageDown => self.select(
+                    self.selected
+                        .saturating_add(page)
+                        .min(count.saturating_sub(1)),
+                ),
+                _ => self.edit_query(event),
+            }
+        } else {
+            self.edit_query(event);
+        }
+        NavigationAction::None
     }
 }
 pub struct Navigation {
@@ -37,7 +126,7 @@ pub struct NavigationEntry {
     pub label: String,
     pub(crate) target: Target,
 }
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) enum Target {
     Conflict(&'static str),
     Planning(&'static str),
@@ -51,6 +140,13 @@ pub(crate) enum Target {
 }
 
 impl Workspace {
+    pub(crate) fn recent_record_action(&self, event: &Event) -> bool {
+        self.navigator
+            .as_ref()
+            .is_some_and(|n| matches!(n.kind, Kind::Recent))
+            && matches!(event, Event::Key(k) if k.kind != KeyEventKind::Release
+                && k.code == KeyCode::Char('d') && k.modifiers == KeyModifiers::CONTROL)
+    }
     pub fn navigation(&self) -> Option<Navigation> {
         let navigator = self.navigator.as_ref()?;
         Some(self.navigation_for(navigator))
@@ -181,12 +277,8 @@ impl Workspace {
         {
             self.modules.popup_origin = Some(crate::search::Origin::take(self));
         }
-        self.recent_ui = Default::default();
-        self.navigator = Some(Navigator {
-            kind,
-            query: String::new(),
-            selected: 0,
-        });
+        self.navigation_ui.clear_hits();
+        self.navigator = Some(Navigator::new(kind));
         Ok(Outcome::Continue)
     }
     pub(crate) fn navigation_event(&mut self, event: Event) -> io::Result<Option<Outcome>> {
@@ -203,89 +295,52 @@ impl Workspace {
             return Ok(Some(Outcome::Continue));
         }
         let navigator = self.navigator.as_mut().unwrap();
-        navigator.selected = view.selected;
-        // Recent filtering shares the standard single-line editor, including Delete.
-        if matches!(navigator.kind, Kind::Recent)
-            && (matches!(&event, Event::Paste(_))
-                || matches!(&event, Event::Key(k) if matches!(k.code, KeyCode::Char(_) | KeyCode::Backspace | KeyCode::Delete | KeyCode::Left | KeyCode::Right | KeyCode::Home | KeyCode::End)))
-        {
-            if self.recent_ui.query.event(&mut navigator.query, &event) {
-                navigator.selected = 0;
+        match navigator.event(&event, view.entries.len()) {
+            NavigationAction::Cancel => {
+                self.navigator = None;
+                self.restore_popup_if_closed();
             }
-            return Ok(Some(Outcome::Continue));
-        }
-        match event {
-            Event::Paste(text) => {
-                navigator.query.push_str(&text);
-                navigator.selected = 0;
-            }
-            Event::Key(key) if key.kind != KeyEventKind::Release => match key.code {
-                KeyCode::Esc => {
+            NavigationAction::Activate => {
+                if let Some(entry) = view.entries.get(view.selected) {
+                    if let Target::Structure(value) = &entry.target {
+                        let Kind::Structure(flow) = navigator.kind.clone() else {
+                            unreachable!()
+                        };
+                        flow.select(self, value)?;
+                        self.restore_popup_if_closed();
+                        return Ok(Some(Outcome::Continue));
+                    }
+                    if let Target::Planning(id) = &entry.target {
+                        return self.execute_command(id).map(Some);
+                    }
+                    match &entry.target {
+                        Target::Conflict(action) => match *action {
+                            "load" => self.load_external()?,
+                            "copy" => {
+                                self.begin_prompt(Purpose::ConflictCopy)?;
+                            }
+                            "overwrite" => {
+                                self.begin_prompt(Purpose::ConflictOverwrite)?;
+                            }
+                            _ => {}
+                        },
+                        Target::Snapshot(id) => self.open_history_preview(id)?,
+                        Target::Structure(_) | Target::Planning(_) => unreachable!(),
+                        Target::Chapter(id) => self.switch_chapter(id)?,
+                        Target::Volume(id) => self.selected_volume = Some(id.clone()),
+                        Target::Project(root) => self.switch_recent(root)?,
+                        Target::New => {
+                            self.begin_prompt(Purpose::NewProject)?;
+                        }
+                        Target::Open => {
+                            self.begin_prompt(Purpose::OpenProject)?;
+                        }
+                    }
                     self.navigator = None;
                     self.restore_popup_if_closed();
                 }
-                KeyCode::Up => navigator.selected = navigator.selected.saturating_sub(1),
-                KeyCode::Down => {
-                    navigator.selected =
-                        (navigator.selected + 1).min(view.entries.len().saturating_sub(1))
-                }
-                KeyCode::Backspace => {
-                    if let Some((offset, _)) = navigator.query.grapheme_indices(true).next_back() {
-                        navigator.query.truncate(offset);
-                    }
-                    navigator.selected = 0;
-                }
-                KeyCode::Enter => {
-                    if let Some(entry) = view.entries.get(view.selected) {
-                        if let Target::Structure(value) = &entry.target {
-                            let Kind::Structure(flow) = navigator.kind.clone() else {
-                                unreachable!()
-                            };
-                            flow.select(self, value)?;
-                            self.restore_popup_if_closed();
-                            return Ok(Some(Outcome::Continue));
-                        }
-                        if let Target::Planning(id) = &entry.target {
-                            return self.execute_command(id).map(Some);
-                        }
-                        match &entry.target {
-                            Target::Conflict(action) => match *action {
-                                "load" => self.load_external()?,
-                                "copy" => {
-                                    self.begin_prompt(Purpose::ConflictCopy)?;
-                                }
-                                "overwrite" => {
-                                    self.begin_prompt(Purpose::ConflictOverwrite)?;
-                                }
-                                _ => {}
-                            },
-                            Target::Snapshot(id) => self.open_history_preview(id)?,
-                            Target::Structure(_) | Target::Planning(_) => unreachable!(),
-                            Target::Chapter(id) => self.switch_chapter(id)?,
-                            Target::Volume(id) => self.selected_volume = Some(id.clone()),
-                            Target::Project(root) => self.switch_recent(root)?,
-                            Target::New => {
-                                self.begin_prompt(Purpose::NewProject)?;
-                            }
-                            Target::Open => {
-                                self.begin_prompt(Purpose::OpenProject)?;
-                            }
-                        }
-                        self.navigator = None;
-                        self.restore_popup_if_closed();
-                    }
-                }
-                KeyCode::Char(c)
-                    if !key.modifiers.intersects(
-                        KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER,
-                    ) =>
-                {
-                    navigator.query.push(c);
-                    navigator.selected = 0;
-                }
-                _ => {}
-            },
-            _ => {}
+            }
+            NavigationAction::None => {}
         }
         Ok(Some(Outcome::Continue))
     }
