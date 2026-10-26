@@ -39,10 +39,13 @@ pub use external::ExternalConflict;
 pub use panes::PaneView;
 mod keymap;
 mod library;
+mod start;
+mod user_path;
+pub use start::{StartOutcome, StartScreen};
 mod navigation;
 mod navigator;
 mod recent_ui;
-pub use library::RecentProject;
+pub use library::{RecentKind, RecentProject};
 pub use navigator::{Navigation, NavigationEntry};
 mod pairing;
 mod planning;
@@ -589,7 +592,7 @@ impl Workspace {
         self.commands.set_keybinding(key, id)
     }
     pub fn configuration_warning(&self) -> Option<&str> {
-        self.commands.warning()
+        self.library_warning().or_else(|| self.commands.warning())
     }
     pub fn command_shortcuts(&self, id: &str) -> String {
         self.commands.shortcuts(id)
@@ -637,8 +640,14 @@ impl Workspace {
     }
     /// Save a complete copy to a new destination, then continue editing that copy.
     pub fn save_as(&mut self, destination: impl AsRef<Path>) -> io::Result<()> {
+        let destination = if self.project.is_some() {
+            user_path::expand(destination.as_ref())?
+        } else {
+            user_path::resolve(destination.as_ref(), true)?
+        };
+        let destination = destination.as_path();
         self.require_export_idle()?;
-        self.protect_layout(destination.as_ref(), self.project.is_some())?;
+        self.protect_layout(destination, self.project.is_some())?;
         self.finish_history()?;
         self.library
             .protect(destination.as_ref(), self.project.is_some())?;
@@ -666,6 +675,7 @@ impl Workspace {
         self.saving.completed = true;
         self.saving.uncertain = false;
         self.reset_external_after_copy()?;
+        self.remember_location()?;
         self.close_book_search();
         if let Some(path) = self.commands.keymap_path().map(Path::to_owned) {
             self.load_keymap(path);

@@ -128,10 +128,7 @@ pub(super) fn draw(
             return;
         }
         let (line, cursor_column) = prompt.line_view(inner.width);
-        frame.render_widget(
-            Paragraph::new(format!("{line}\nEnter 确认 · Esc 取消")),
-            inner,
-        );
+        frame.render_widget(Paragraph::new(format!("{line}\n{}", prompt.hint())), inner);
         if inner.width > 0 && inner.height > 0 {
             frame.set_cursor_position((inner.x + cursor_column, inner.y));
         }

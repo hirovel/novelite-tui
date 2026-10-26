@@ -39,17 +39,21 @@ impl Workspace {
     pub(crate) fn leave_zen(&mut self) {
         if let Some(origin) = self.zen_origin.take() {
             origin.restore(self);
+            self.invalidate_editor_geometry();
+            self.reset_design_transition();
         }
     }
     fn toggle_zen(&mut self) -> io::Result<Outcome> {
         if self.prompt.is_some() {
-            return Err(io::Error::other("请先完成或取消当前输入，再切换禅模式"));
+            return Err(io::Error::other("请先完成或取消当前输入，再切换专注写作"));
         }
         self.cancel_mouse_drag();
         if self.zen_mode() {
             self.leave_zen();
         } else {
             self.zen_origin = Some(crate::search::Origin::take(self));
+            self.invalidate_editor_geometry();
+            self.reset_design_transition();
         }
         Ok(Outcome::Continue)
     }
@@ -100,7 +104,7 @@ pub(crate) fn commands() -> Vec<Command> {
     });
     commands.push(Command {
         id: "toggle-zen".into(),
-        title: "开关禅模式（暂时收起面板）".into(),
+        title: "专注写作 / 禅模式（暂时只显示当前文稿）".into(),
         run: Workspace::toggle_zen,
     });
     commands

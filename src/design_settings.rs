@@ -21,6 +21,7 @@ pub(crate) struct DesignUi {
     can_apply: bool,
     hits: Vec<(Rect, Hit)>,
     command_hit: Option<Rect>,
+    pub(crate) zen_exit_hit: Option<Rect>,
     pub(crate) heading_hit: Option<Rect>,
     pub palette_close: Option<Rect>,
     pub palette_hits: Vec<(Rect, String)>,
@@ -78,6 +79,7 @@ impl Workspace {
     pub(crate) fn begin_design_frame(&mut self) {
         self.recent_ui.clear_hits();
         self.design_ui.command_hit = None;
+        self.design_ui.zen_exit_hit = None;
         self.design_ui.heading_hit = None;
         self.design_ui.palette_hits.clear();
         self.design_ui.palette_close = None;
@@ -225,6 +227,12 @@ impl Workspace {
                     "只过渡界面强调色；输入可随时打断",
                     self.design_motion_enabled(),
                     "design-motion",
+                ),
+                toggle_row(
+                    "专注写作",
+                    "临时只显示当前文稿；退出恢复窗格与面板，不改个人偏好",
+                    self.zen_mode(),
+                    "toggle-zen",
                 ),
             ],
         }
@@ -387,6 +395,13 @@ impl Workspace {
                     self.commands.close_palette();
                     return self.execute_command(&id).map(Some);
                 }
+            } else if self.zen_mode()
+                && self.prompt.is_none()
+                && !self.import_active()
+                && self.history_preview.is_none()
+                && self.design_ui.zen_exit_hit.is_some_and(|r| r.contains(pos))
+            {
+                return self.execute_command("toggle-zen").map(Some);
             } else if self.prompt.is_none()
                 && !self.import_active()
                 && self.history_preview.is_none()

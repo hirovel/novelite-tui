@@ -32,6 +32,10 @@ impl Workspace {
     pub fn is_split(&self) -> bool {
         self.panes.other.is_some()
     }
+    /// A retained second pane can be temporarily hidden without closing its document.
+    pub(crate) fn visible_split(&self) -> bool {
+        self.is_split() && !self.zen_mode()
+    }
     pub fn active_pane(&self) -> usize {
         self.panes.active
     }
@@ -104,7 +108,7 @@ impl Workspace {
     }
     pub fn pane_views(&mut self, area: Rect) -> Vec<PaneView> {
         self.reconcile_panes();
-        let split = self.panes.other.is_some();
+        let split = self.visible_split();
         let fits = split && self.split_fits(area);
         let (first, second) = if fits && self.panes.stacked {
             let height = (area.height - 1) / 2;

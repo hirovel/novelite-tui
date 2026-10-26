@@ -9,9 +9,18 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RecentKind {
+    #[default]
+    Project,
+    File,
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RecentProject {
+    #[serde(default)]
+    pub kind: RecentKind,
     pub root: PathBuf,
     pub title: String,
     pub chapter: String,
@@ -28,31 +37,44 @@ pub(crate) struct Library {
     path: Option<PathBuf>,
     pub entries: Vec<RecentProject>,
     forgotten: HashSet<PathBuf>,
+    source: Option<Vec<u8>>,
+    blocked: Option<String>,
+    warning: Option<String>,
 }
 impl Library {
     pub fn path(&self) -> Option<&Path> {
         self.path.as_deref()
     }
-    fn read(path: &Path) -> io::Result<Self> {
+    pub(crate) fn read(path: &Path) -> io::Result<Self> {
         let path = crate::keymap::resolve_destination(path)?;
-        let entries = match fs::read(&path) {
+        let mut source = None;
+        let mut entries = match fs::read(&path) {
             Ok(bytes) => {
                 let file: LibraryFile = serde_json::from_slice(&bytes)?;
-                if file.version != 1 {
+                if !matches!(file.version, 1 | 2) {
                     return Err(io::Error::other("不支持的最近作品格式"));
                 }
+                source = Some(bytes);
                 file.projects
             }
             Err(error) if error.kind() == io::ErrorKind::NotFound => vec![],
             Err(error) => return Err(error),
         };
+        for entry in &mut entries {
+            entry.root = crate::keymap::resolve_destination(&entry.root)?;
+        }
+        let mut seen = HashSet::new();
+        entries.retain(|entry| seen.insert(entry.root.clone()));
         let library = Self {
             path: Some(path),
             entries,
             forgotten: HashSet::new(),
+            source,
+            blocked: None,
+            warning: None,
         };
         for entry in &library.entries {
-            library.protect(&entry.root, true)?;
+            library.protect(&entry.root, entry.kind == RecentKind::Project)?;
         }
         Ok(library)
     }
@@ -66,21 +88,46 @@ impl Library {
         }
         Ok(())
     }
-    fn persist(&self) -> io::Result<()> {
+    pub(crate) fn unavailable(path: PathBuf, error: &io::Error) -> Self {
+        let warning = format!("最近记录未保存：{error}；正文保存不受影响");
+        let path = crate::keymap::resolve_destination(&path)
+            .or_else(|_| std::path::absolute(&path))
+            .unwrap_or(path);
+        Self {
+            path: Some(path),
+            blocked: Some(error.to_string()),
+            warning: Some(warning),
+            ..Self::default()
+        }
+    }
+    pub(crate) fn warning(&self) -> Option<&str> {
+        self.warning.as_deref()
+    }
+    pub(crate) fn persist(&mut self) -> io::Result<()> {
+        if let Some(error) = &self.blocked {
+            return Err(io::Error::other(error.clone()));
+        }
         if let Some(path) = &self.path {
             for entry in &self.entries {
-                self.protect(&entry.root, true)?;
+                self.protect(&entry.root, entry.kind == RecentKind::Project)?;
+            }
+            let actual = match fs::read(path) {
+                Ok(bytes) => Some(bytes),
+                Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+                Err(error) => return Err(error),
+            };
+            if actual != self.source {
+                return Err(io::Error::other("最近记录已被其他程序修改，请重启后重试"));
             }
             fs::create_dir_all(path.parent().unwrap())?;
-            atomic_write(
-                path,
-                &serde_json::to_vec_pretty(&LibraryFile {
-                    version: 1,
-                    projects: self.entries.clone(),
-                })?,
-                WriteMode::Replace,
-            )?;
+            let bytes = serde_json::to_vec_pretty(&LibraryFile {
+                version: 2,
+                projects: self.entries.clone(),
+            })?;
+            atomic_write(path, &bytes, WriteMode::Replace)?;
+            self.source = Some(bytes);
         }
+        self.warning = None;
         Ok(())
     }
 }
@@ -98,9 +145,8 @@ impl Workspace {
             return Err(io::Error::other("最近作品记录不能与键位配置共用文件"));
         }
         let candidate = Library {
-            path: Some(resolved),
-            entries: vec![],
-            forgotten: HashSet::new(),
+            path: Some(resolved.clone()),
+            ..Library::default()
         };
         candidate.protect(
             self.project
@@ -109,11 +155,20 @@ impl Workspace {
             self.project.is_some(),
         )?;
         let restore = !self.is_dirty() && self.chapters.is_empty();
-        self.library = Library::read(path.as_ref())?;
+        self.library = match Library::read(path.as_ref()) {
+            Ok(library) => library,
+            Err(error) => {
+                self.library = Library::unavailable(resolved, &error);
+                return Err(error);
+            }
+        };
         if restore {
             self.restore_location()?;
         }
         self.remember_location()
+    }
+    pub fn library_warning(&self) -> Option<&str> {
+        self.library.warning()
     }
     pub fn recent_projects(&self) -> &[RecentProject] {
         &self.library.entries
@@ -132,41 +187,41 @@ impl Workspace {
         let Some(entry) = library.entries.first() else {
             return Ok(None);
         };
-        let mut work = Self::open_project(&entry.root)?;
+        let mut work = Self::open_recent(entry)?;
         work.library = library;
         work.restore_location()?;
         Ok(Some(work))
     }
+    pub(crate) fn open_recent(entry: &RecentProject) -> io::Result<Self> {
+        let path = crate::user_path::resolve(&entry.root, false)?;
+        match entry.kind {
+            RecentKind::Project if path.is_dir() => Self::open_project(path),
+            RecentKind::File if path.is_file() => Self::open(path),
+            _ => Err(io::Error::other("最近记录的路径类型已改变，请重新打开")),
+        }
+    }
+    pub(crate) fn switch_recent(&mut self, root: &Path) -> io::Result<()> {
+        if let Some(entry) = self.library.entries.iter().find(|e| e.root == root) {
+            let path = crate::user_path::resolve(root, false)?;
+            if (entry.kind == RecentKind::File) != path.is_file() {
+                return Err(io::Error::other("最近记录的路径类型已改变，请重新打开"));
+            }
+        }
+        self.switch_path(root)
+    }
     /// Open an existing standalone manuscript or a managed project without abandoning edits.
     pub fn switch_path(&mut self, path: impl AsRef<Path>) -> io::Result<()> {
         self.require_export_idle()?;
-        let path = fs::canonicalize(path)?;
+        let expanded = crate::user_path::expand(path.as_ref())?;
+        // Opening the already-active chapter is a no-op, not a standalone request.
+        if fs::canonicalize(&expanded).ok().as_deref() == Some(self.path.as_path()) {
+            return Ok(());
+        }
+        let path = crate::user_path::resolve(&expanded, false)?;
         if path.is_dir() {
             return self.switch_project(path);
         }
-        if path == self.path {
-            return Ok(());
-        }
-        if !path.is_file()
-            || !path
-                .extension()
-                .and_then(|s| s.to_str())
-                .is_some_and(|ext| {
-                    ext.eq_ignore_ascii_case("txt") || ext.eq_ignore_ascii_case("md")
-                })
-        {
-            return Err(io::Error::other("请选择 TXT/Markdown 文件或作品文件夹"));
-        }
-        // Managed chapters must retain the project's lock, journal and shared state.
-        for parent in path.ancestors().skip(1) {
-            if parent.join("novelite.json").try_exists()? {
-                return Err(io::Error::other(
-                    "这是作品内的文件，请打开所属作品文件夹，再从章节目录选择",
-                ));
-            }
-        }
-        self.library.protect(&path, false)?;
-        self.protect_layout(&path, false)?;
+        self.protect_user_destination(&path, false)?;
         self.save()?;
         self.checkpoint(false, true)?;
         let next = Self::open(&path)?;
@@ -175,7 +230,7 @@ impl Workspace {
 
     pub fn switch_project(&mut self, root: impl AsRef<Path>) -> io::Result<()> {
         self.require_export_idle()?;
-        let root = fs::canonicalize(root)?;
+        let root = fs::canonicalize(crate::user_path::expand(root.as_ref())?)?;
         if self
             .project
             .as_ref()
@@ -183,8 +238,7 @@ impl Workspace {
         {
             return Ok(());
         }
-        self.library.protect(&root, true)?;
-        self.protect_layout(&root, true)?;
+        self.protect_user_destination(&root, true)?;
         self.save()?;
         self.checkpoint(false, true)?;
         let next = Self::open_project(&root)?;
@@ -192,8 +246,9 @@ impl Workspace {
     }
     pub fn new_project(&mut self, root: impl AsRef<Path>, title: &str) -> io::Result<()> {
         self.require_export_idle()?;
-        self.library.protect(root.as_ref(), true)?;
-        self.protect_layout(root.as_ref(), true)?;
+        let root = crate::user_path::expand(root.as_ref())?;
+        let root = root.as_path();
+        self.protect_user_destination(root, true)?;
         self.save()?;
         self.checkpoint(false, true)?;
         let next = Self::create_project(root, title)?;
@@ -202,9 +257,8 @@ impl Workspace {
     pub(crate) fn adopt_project(&mut self, mut next: Self) -> io::Result<()> {
         self.require_export_idle()?;
         next.library = self.library.clone();
-        if let Some(store) = &next.project {
-            next.library.forgotten.remove(&store.root);
-        }
+        let root = next.location_root().to_owned();
+        next.library.forgotten.remove(&root);
         next.restore_location()?;
         next.remember_location()?;
         next.commands = std::mem::take(&mut self.commands);
@@ -222,45 +276,69 @@ impl Workspace {
         *self = next;
         Ok(())
     }
+    fn location_root(&self) -> &Path {
+        self.project
+            .as_ref()
+            .map_or(self.path.as_path(), |store| store.root.as_path())
+    }
     pub(crate) fn remember_location(&mut self) -> io::Result<()> {
-        let Some(store) = &self.project else {
-            return Ok(());
-        };
-        if self.library.forgotten.contains(&store.root) {
+        let root = self.location_root().to_owned();
+        if self.library.forgotten.contains(&root) {
             return Ok(());
         }
         let mut next = self.library.clone();
         let mut positions = next
             .entries
             .iter()
-            .find(|entry| entry.root == store.root)
-            .map(|entry| entry.positions.clone())
+            .find(|e| e.root == root)
+            .map(|e| e.positions.clone())
             .unwrap_or_default();
-        positions.extend(
-            self.chapters
-                .iter()
-                .map(|(id, doc)| (id.clone(), doc.cursor)),
-        );
-        positions.insert(store.active.clone(), self.document.cursor);
-        next.entries.retain(|entry| entry.root != store.root);
+        let (kind, title, chapter) = if let Some(store) = &self.project {
+            positions.extend(
+                self.chapters
+                    .iter()
+                    .map(|(id, doc)| (id.clone(), doc.cursor)),
+            );
+            (
+                RecentKind::Project,
+                store.manifest.title.clone(),
+                store.active.clone(),
+            )
+        } else {
+            (
+                RecentKind::File,
+                self.path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned(),
+                String::new(),
+            )
+        };
+        positions.insert(chapter.clone(), self.document.cursor);
+        next.entries.retain(|entry| entry.root != root);
         next.entries.insert(
             0,
             RecentProject {
-                root: store.root.clone(),
-                title: store.manifest.title.clone(),
-                chapter: store.active.clone(),
+                kind,
+                root,
+                title,
+                chapter,
                 positions,
             },
         );
-        next.persist()?;
+        if let Err(error) = next.persist() {
+            next.warning = Some(format!("最近记录未保存：{error}；正文保存不受影响"));
+        }
         self.library = next;
         Ok(())
     }
-    fn restore_location(&mut self) -> io::Result<()> {
+    pub(crate) fn restore_location(&mut self) -> io::Result<()> {
         if self.external_conflict().is_some() {
             return Ok(());
         }
         let Some(store) = &self.project else {
+            self.restore_cursor();
             return Ok(());
         };
         let Some(entry) = self
@@ -293,15 +371,17 @@ impl Workspace {
     }
     pub(crate) fn restore_cursor(&mut self) {
         use unicode_segmentation::UnicodeSegmentation;
-        let Some(store) = &self.project else {
-            return;
-        };
+        let root = self.location_root();
+        let chapter = self
+            .project
+            .as_ref()
+            .map_or("", |store| store.active.as_str());
         if let Some(position) = self
             .library
             .entries
             .iter()
-            .find(|entry| entry.root == store.root)
-            .and_then(|entry| entry.positions.get(&store.active))
+            .find(|entry| entry.root == root)
+            .and_then(|entry| entry.positions.get(chapter))
         {
             self.document.cursor = self
                 .document

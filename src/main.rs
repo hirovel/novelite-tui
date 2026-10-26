@@ -5,7 +5,7 @@ use crossterm::{
     },
     execute,
 };
-use novelite_tui::{Outcome, Workspace};
+use novelite_tui::{Outcome, StartOutcome, StartScreen};
 use std::{
     io::{self, IsTerminal},
     process::ExitCode,
@@ -74,65 +74,86 @@ fn run() -> io::Result<()> {
             "Interactive terminal required; no file was changed. Use --help.",
         ));
     }
-    let mut work = if let Some(path) = path {
-        if create_project {
-            let title = path.file_name().unwrap_or_default().to_string_lossy();
-            Workspace::create_project(&path, &title)?
-        } else if path.is_dir() {
-            Workspace::open_project(&path)?
-        } else {
-            Workspace::open(&path)?
-        }
-    } else if let Some(state) = &state {
-        let Some(work) = Workspace::resume(state)? else {
-            help();
-            return Ok(());
-        };
-        work
-    } else {
-        help();
-        return Ok(());
-    };
-    if let Some(path) = state {
-        work.load_library(path)?;
-    };
-    if let Some(path) = keymap {
-        work.load_keymap(path);
+    let mut start = StartScreen::new(state);
+    for reserved in [&keymap, &layout].into_iter().flatten() {
+        start.reserve(reserved)?;
     }
-    let layout_warning = layout
-        .and_then(|p| work.load_layout(p).err())
-        .map(|e| format!("布局未载入：{e}"));
-    work.configure_color_support(novelite_tui::detect_color_support());
+    let initial = if let Some(path) = path {
+        Some(start.open_requested(path, create_project)?)
+    } else {
+        start.resume()
+    };
     // Construct before initialization so partially initialized terminals are restored too.
     let mut guard = TerminalGuard {
         enhanced: false,
         bracketed_paste,
     };
     let mut terminal = ratatui::try_init()?;
-    let mut message = layout_warning.unwrap_or_default();
+    let mut message = String::new();
     if bracketed_paste && let Err(error) = execute!(io::stdout(), EnableBracketedPaste) {
         message = format!("粘贴分隔启用失败：{error}；请用 F1 → paste 粘贴");
     }
+    let mut mouse_captured = false;
     if mouse_enabled {
         match execute!(io::stdout(), EnableMouseCapture) {
-            Ok(()) => work.configure_mouse(true),
+            Ok(()) => mouse_captured = true,
             Err(error) => message = format!("鼠标报告启用失败，键盘仍可用：{error}"),
         }
     }
-    let mut mouse_captured = work.mouse_enabled();
-    if enhanced_keyboard
-        && work.configure_keyboard(crossterm::terminal::supports_keyboard_enhancement())
-    {
+    let mut keyboard_enabled = false;
+    if enhanced_keyboard && crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false) {
         guard.enhanced = true;
-        let result = execute!(
+        keyboard_enabled = execute!(
             io::stdout(),
             PushKeyboardEnhancementFlags(
                 KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
                     | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
             )
-        );
-        work.configure_keyboard(result.map(|_| true));
+        )
+        .is_ok();
     }
+    let mut work = if let Some(work) = initial {
+        work
+    } else {
+        start.configure_mouse(mouse_captured);
+        crossterm::style::force_color_output(
+            novelite_tui::detect_color_support() != novelite_tui::ColorMode::Monochrome,
+        );
+        if !message.is_empty() {
+            start.set_message(format!("{} · {message}", start.message()));
+        }
+        loop {
+            terminal.draw(|frame| start.render(frame))?;
+            let event = event::read()?;
+            if matches!(
+                event,
+                event::Event::Mouse(event::MouseEvent {
+                    kind: event::MouseEventKind::Moved,
+                    ..
+                })
+            ) {
+                continue;
+            }
+            match start.handle_event(event) {
+                Ok(StartOutcome::Open(work)) => {
+                    terminal.clear()?;
+                    break *work;
+                }
+                Ok(StartOutcome::Exit) => return Ok(()),
+                Ok(StartOutcome::Stay) => {}
+                Err(error) => start.set_message(error.to_string()),
+            }
+        }
+    };
+    if let Some(path) = keymap {
+        work.load_keymap(path);
+    }
+    if let Some(error) = layout.and_then(|path| work.load_layout(path).err()) {
+        message = format!("布局未载入：{error}");
+    }
+    work.configure_color_support(novelite_tui::detect_color_support());
+    work.configure_mouse(mouse_captured);
+    work.configure_keyboard(Ok(keyboard_enabled));
     let mut output_colors = None;
     let mut redraw = true;
     loop {
@@ -212,7 +233,7 @@ fn run() -> io::Result<()> {
 
 fn help() {
     println!(
-        "Novelite TUI {}\n\nUsage: novelite-tui [file.txt|file.md|project-folder] [--keymap keys.json] [--state recent.json] [--layout workspace.json]\n       novelite-tui --new <new-project-folder>\n\nWithout a path, resume the last project and chapter.\nCtrl+S / F2: save; Ctrl+Q / F10: save and exit.\nArrow keys, Home, End, Backspace, Delete: edit.\nF1 / Ctrl+P: commands including chapters, recent-projects, new-volume, new-chapter.\nEsc: close the active panel. Plain / always remains writing input.\nIndependent terminal fallbacks: --no-mouse, --no-enhanced-keyboard, --no-bracketed-paste.\nWithout bracketed paste, use the paste command for a safe single transaction.\nAutosave: 300ms idle / 2s continuous input. Unpersisted input can be lost on forced exit.",
+        "Novelite TUI {}\n\nUsage: novelite-tui [file.txt|file.md|project-folder] [--keymap keys.json] [--state recent.json] [--layout workspace.json]\n       novelite-tui --new <new-project-folder>\n\nWithout a path, resume the last manuscript or project; otherwise show the start screen.\nCtrl+S / F2: save; Ctrl+Q / F10: save and exit.\nArrow keys, Home, End, Backspace, Delete: edit.\nF1 / Ctrl+P: commands including chapters, recent-projects, new-volume, new-chapter.\nPath prompts: ~/ home folder, Tab completes files/folders.\nEsc: close the active panel. Plain / always remains writing input.\nIndependent terminal fallbacks: --no-mouse, --no-enhanced-keyboard, --no-bracketed-paste.\nWithout bracketed paste, use the paste command for a safe single transaction.\nAutosave: 300ms idle / 2s continuous input. Unpersisted input can be lost on forced exit.",
         env!("CARGO_PKG_VERSION")
     );
 }

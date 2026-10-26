@@ -137,7 +137,7 @@ impl Workspace {
                     target: Target::New,
                 });
                 entries.push(NavigationEntry {
-                    label: "打开作品文件夹…".into(),
+                    label: "打开文件或作品…".into(),
                     target: Target::Open,
                 });
                 entries.extend(
@@ -158,7 +158,7 @@ impl Workspace {
                 Kind::Planning => "大纲与目标".into(),
                 Kind::Conflicts => "外部冲突 · 上下选择 · Enter 执行 · Esc 返回".into(),
                 Kind::Chapters => "章节 · 输入标题筛选 · Enter 选择 · Esc 返回 · F1 操作".into(),
-                Kind::Recent => "最近作品 · Enter 打开 · Ctrl+D 移除记录 · Esc 返回".into(),
+                Kind::Recent => "最近文件与作品 · Enter 打开 · Ctrl+D 移除记录 · Esc 返回".into(),
                 Kind::Structure(flow) => flow.title().into(),
                 Kind::History {
                     usage, capacity, ..
@@ -263,7 +263,7 @@ impl Workspace {
                             Target::Structure(_) | Target::Planning(_) => unreachable!(),
                             Target::Chapter(id) => self.switch_chapter(id)?,
                             Target::Volume(id) => self.selected_volume = Some(id.clone()),
-                            Target::Project(root) => self.switch_project(root)?,
+                            Target::Project(root) => self.switch_recent(root)?,
                             Target::New => {
                                 self.begin_prompt(Purpose::NewProject)?;
                             }
@@ -314,7 +314,7 @@ pub(crate) fn commands() -> Vec<Command> {
         ("chapters", "章节目录 / 按标题跳章", |w| {
             w.show_navigation(Kind::Chapters)
         }),
-        ("recent-projects", "最近作品", |w| {
+        ("recent-projects", "最近文件与作品", |w| {
             w.show_navigation(Kind::Recent)
         }),
         ("open-project", "打开文件或作品", |w| {
@@ -345,14 +345,12 @@ pub(crate) fn commands() -> Vec<Command> {
         }),
         (
             "forget-project",
-            "移除当前作品的最近记录（保留手稿）",
+            "移除当前文件或作品的最近记录（保留手稿）",
             |w| {
                 let root = w
                     .project
                     .as_ref()
-                    .ok_or_else(|| io::Error::other("请先打开作品"))?
-                    .root
-                    .clone();
+                    .map_or_else(|| w.path.clone(), |store| store.root.clone());
                 w.forget_project(root)?;
                 Ok(Outcome::Continue)
             },

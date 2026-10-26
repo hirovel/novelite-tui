@@ -227,7 +227,7 @@ fn compact_properties_remain_reachable_and_distinct_from_category_navigation() {
     for (first, last, count) in [
         ("正文宽度", "页面留白", 2),
         ("分栏", "大纲宽度", 5),
-        ("对话高亮", "界面过渡", 4),
+        ("对话高亮", "专注写作", 5),
     ] {
         let b = draw(&mut w, 120, 40);
         assert!(screen_text(&b).contains(first));

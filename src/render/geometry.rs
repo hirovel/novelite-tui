@@ -11,8 +11,8 @@ pub(super) struct ReadingLayout {
 }
 
 impl ReadingLayout {
-    pub fn new(area: Rect, searching: bool, has_notice: bool, dock_open: bool) -> Self {
-        let header = u16::from(area.height >= 6);
+    pub fn new(area: Rect, searching: bool, has_notice: bool, dock_open: bool, zen: bool) -> Self {
+        let header = u16::from(!zen && area.height >= 6);
         let notice = u16::from(has_notice && area.height >= 3);
         // A shared height prevents the manuscript jumping when switching modes.
         // Short terminals retain writing space and show a compact resize hint.

@@ -1,6 +1,7 @@
 use super::{geometry::ReadingLayout, safe_label};
 use crate::{SaveState, Workspace};
 use ratatui::{layout::Rect, widgets::Paragraph};
+use unicode_width::UnicodeWidthStr;
 
 pub(super) struct Notice {
     text: String,
@@ -12,10 +13,7 @@ pub(super) fn notice(work: &Workspace, message: &str) -> Option<Notice> {
     let warning = if !message.is_empty() {
         Some(message)
     } else {
-        work.external_conflict()
-            .map(|c| c.message.as_str())
-            .or_else(|| work.configuration_warning())
-            .or_else(|| work.history_warning())
+        work.external_conflict().map(|c| c.message.as_str())
     };
     if let Some(text) = warning {
         return Some(Notice {
@@ -32,6 +30,16 @@ pub(super) fn notice(work: &Workspace, message: &str) -> Option<Notice> {
     if let Some(text) = save_warning {
         return Some(Notice {
             text: text.into(),
+            warning: true,
+        });
+    }
+    // A configuration warning must not contradict a failed manuscript save.
+    if let Some(text) = work
+        .configuration_warning()
+        .or_else(|| work.history_warning())
+    {
+        return Some(Notice {
+            text: text.to_owned(),
             warning: true,
         });
     }
@@ -89,7 +97,14 @@ pub(super) fn draw(
     // would leak stale status text outside narrow tool regions.
     if !work.bottom_tool_open() {
         let footer = line(layout.footer);
-        let command_width = if footer.width >= 48 {
+        let zen = work.zen_mode();
+        let command_width = if zen {
+            if footer.width >= 40 {
+                11
+            } else {
+                footer.width.min(4)
+            }
+        } else if footer.width >= 48 {
             19
         } else if footer.width >= 24 {
             11
@@ -116,12 +131,20 @@ pub(super) fn draw(
             .as_ref()
             .and_then(|p| p.editor.as_ref())
             .is_some_and(|d| d.has_edits());
-        let label = if draft {
+        let mut label = if draft {
             "大纲草稿未保存".to_owned()
         } else {
             format!("{} 字{}", work.document.words, status)
         };
-        let style_width = if footer.width >= 48 {
+        let style_width = if zen {
+            if footer.width >= 24 {
+                8
+            } else if footer.width >= 12 {
+                4
+            } else {
+                0
+            }
+        } else if footer.width >= 48 {
             12
         } else if footer.width >= 24 {
             8
@@ -134,21 +157,43 @@ pub(super) fn draw(
             style_width,
             1,
         );
+        let status_width = footer
+            .width
+            .saturating_sub(command_width + style_width + if zen { 2 } else { 3 });
+        // A narrow writing surface keeps actionable state before routine counts.
+        // The outline draft is a separate unsaved object from the manuscript.
+        if zen && label.width() > usize::from(status_width) {
+            if draft {
+                label = "大纲未保存".into();
+            } else if !status.is_empty() {
+                label = status.trim_start_matches(" · ").to_owned();
+            }
+        }
         frame.render_widget(
-            Paragraph::new(label).style(if notice.is_some_and(|n| n.warning) {
-                theme.warning
-            } else {
-                theme.muted
-            }),
-            Rect::new(
-                footer.x,
-                footer.y,
-                footer.width.saturating_sub(command_width + style_width + 3),
-                1,
+            Paragraph::new(super::fit_label(&label, status_width)).style(
+                if notice.is_some_and(|n| n.warning) {
+                    theme.warning
+                } else {
+                    theme.muted
+                },
             ),
+            Rect::new(footer.x, footer.y, status_width, 1),
         );
         if style_width > 0 {
-            work.render_paragraph_entry(frame, style_area);
+            if zen {
+                frame.render_widget(
+                    Paragraph::new(if style_width >= 8 {
+                        "退出专注"
+                    } else {
+                        "退出"
+                    })
+                    .style(theme.muted),
+                    style_area,
+                );
+                work.design_ui.zen_exit_hit = Some(style_area);
+            } else {
+                work.render_paragraph_entry(frame, style_area);
+            }
         }
         work.render_command_entry(frame, command);
     }

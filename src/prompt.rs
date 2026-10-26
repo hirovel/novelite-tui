@@ -44,6 +44,7 @@ pub struct Prompt {
     pub text: String,
     pub(crate) purpose: Purpose,
     line: crate::line_editor::LineEditor,
+    completion: crate::user_path::Completion,
 }
 pub(crate) enum Response {
     Editing,
@@ -105,6 +106,7 @@ impl Prompt {
             .into(),
             text: String::new(),
             line: Default::default(),
+            completion: Default::default(),
             purpose,
         }
     }
@@ -115,11 +117,35 @@ impl Prompt {
             match key.code {
                 KeyCode::Esc => return Response::Cancel,
                 KeyCode::Enter => return Response::Submit,
+                KeyCode::Tab
+                    if matches!(
+                        self.purpose,
+                        Purpose::OpenProject | Purpose::NewProject | Purpose::SaveAs
+                    ) =>
+                {
+                    self.completion.apply(&mut self.text);
+                    self.line = Default::default();
+                    return Response::Editing;
+                }
                 _ => {}
             }
         }
-        self.line.event(&mut self.text, &event);
+        if self.line.event(&mut self.text, &event) {
+            self.completion.reset();
+        }
         Response::Editing
+    }
+    pub(crate) fn hint(&self) -> &str {
+        if !self.completion.hint.is_empty() {
+            &self.completion.hint
+        } else if matches!(
+            self.purpose,
+            Purpose::OpenProject | Purpose::NewProject | Purpose::SaveAs
+        ) {
+            "Tab 补全路径 · Enter 确认 · Esc 取消"
+        } else {
+            "Enter 确认 · Esc 取消"
+        }
     }
     pub(crate) fn line_view(&mut self, width: u16) -> (String, u16) {
         self.line.view(&self.text, width)

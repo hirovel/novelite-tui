@@ -326,7 +326,8 @@ impl Workspace {
             VisualStyle::Compact => (0, 0),
         };
         // Keep split thresholds and small terminals usable; decoration yields first.
-        let minimum = if self.is_split() { 81 } else { 40 };
+        let split = self.visible_split();
+        let minimum = if split { 81 } else { 40 };
         let horizontal = if area.width >= minimum + horizontal * 2 {
             horizontal
         } else {
@@ -334,7 +335,7 @@ impl Workspace {
         };
         let vertical = (area.height.saturating_sub(10) / 8).min(vertical * 2);
         let width = area.width.saturating_sub(horizontal * 2);
-        let width = if self.visual_style() == VisualStyle::Reading && !self.is_split() {
+        let width = if (self.visual_style() == VisualStyle::Reading || self.zen_mode()) && !split {
             match self.modules.config.appearance.text_width {
                 TextWidth::Adaptive => (width * 4 / 5).clamp(40, 92).min(width),
                 TextWidth::Wide => width.min(110),
@@ -349,7 +350,7 @@ impl Workspace {
             width,
             area.height.saturating_sub(vertical * 2),
         );
-        if self.is_split() && self.split_fits(area) && !self.split_fits(padded) {
+        if split && self.split_fits(area) && !self.split_fits(padded) {
             area
         } else {
             padded

@@ -93,7 +93,7 @@ fn recent_scrolls_and_opens_a_clicked_project_after_saving_the_manuscript() {
     let b = draw(&mut w, 80);
     let marker = point(&b, "▎");
     assert!(
-        line(&b, marker.1).replace(' ', "").contains("作品6"),
+        line(&b, marker.1).replace(' ', "").contains("作品5"),
         "{}",
         line(&b, marker.1)
     );
@@ -103,7 +103,7 @@ fn recent_scrolls_and_opens_a_clicked_project_after_saving_the_manuscript() {
         (marker.0 + 3, marker.1),
     );
     assert!(w.navigation().is_none());
-    assert_eq!(w.project().unwrap().title, "作品6👩‍💻中文长标题");
+    assert_eq!(w.project().unwrap().title, "作品5👩‍💻中文长标题");
     assert_eq!(
         std::fs::read_to_string(d.path().join("draft.txt")).unwrap(),
         "必须保存"
@@ -140,13 +140,14 @@ fn failed_recent_open_keeps_the_draft_and_record_until_explicitly_removed() {
     assert_eq!(w.text(), "留下原稿");
     assert_eq!(w.selected_text(), "稿");
     assert_eq!(w.navigation().unwrap().entries.len(), 1);
-    assert_eq!(w.recent_projects().len(), 1);
+    assert_eq!(w.recent_projects().len(), 2);
     w.handle_event(Event::Key(KeyEvent::new(
         KeyCode::Char('d'),
         KeyModifiers::CONTROL,
     )))
     .unwrap();
-    assert!(w.recent_projects().is_empty());
+    assert_eq!(w.recent_projects().len(), 1);
+    assert_eq!(w.recent_projects()[0].kind, novelite_tui::RecentKind::File);
     assert!(root.join("novelite.json").exists());
     let b = draw(&mut w, 32);
     assert!(b.content.iter().any(|c| c.symbol() == "匹"));

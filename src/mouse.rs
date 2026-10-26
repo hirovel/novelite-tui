@@ -102,6 +102,11 @@ impl Workspace {
         }
         Ok(())
     }
+    pub(crate) fn invalidate_editor_geometry(&mut self) {
+        self.cancel_mouse_drag();
+        self.mouse.area = Rect::default();
+        self.panes.areas = [None, None];
+    }
     pub(crate) fn cancel_mouse_drag(&mut self) {
         self.mouse.dragging = false;
         self.mouse.outside = None;

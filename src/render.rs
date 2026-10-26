@@ -31,6 +31,7 @@ impl Workspace {
             self.chapter_search().is_some(),
             notice.is_some(),
             self.bottom_tool_open(),
+            self.zen_mode(),
         );
         let layout = self.workspace_layout(geometry.workspace);
         let body = self.editor_area(layout.editor);

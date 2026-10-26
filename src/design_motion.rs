@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 pub struct Scene {
     revision: u64,
     settings: bool,
+    zen: bool,
     palette: Option<usize>,
     navigator: bool,
     prompt: bool,
@@ -53,6 +54,9 @@ impl Workspace {
             && self.effective_color_mode() == ColorMode::TrueColor
             && self.modules.config.appearance.background != Background::Terminal
     }
+    pub(crate) fn reset_design_transition(&mut self) {
+        self.design_motion.clear_history();
+    }
     pub fn cancel_design_transition(&mut self) {
         self.design_motion.source = None;
     }
@@ -74,6 +78,7 @@ impl Workspace {
         Scene {
             revision: self.design_ui.revision,
             settings: self.design_ui.open,
+            zen: self.zen_mode(),
             palette: self.commands.palette_selection(),
             navigator: self.navigator.is_some(),
             prompt: self.prompt.is_some(),

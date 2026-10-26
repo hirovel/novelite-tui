@@ -62,7 +62,7 @@ impl Workspace {
         let navigation = self.navigation().unwrap();
         let theme = self.theme();
         self.design_effect_regions.push(area);
-        let Some(drawer) = Drawer::paint(f, &theme, "最近作品", area) else {
+        let Some(drawer) = Drawer::paint(f, &theme, "最近文件与作品", area) else {
             return;
         };
         self.recent_ui.area = Some(area);
@@ -119,7 +119,7 @@ impl Workspace {
         }
         if navigation.entries.is_empty() {
             f.render_widget(
-                Paragraph::new("没有匹配的作品").style(theme.muted),
+                Paragraph::new("没有匹配的文件或作品").style(theme.muted),
                 drawer.content,
             );
         }
@@ -153,7 +153,11 @@ impl Workspace {
             .query
             .view(&n.query, drawer.entry.width.saturating_sub(2));
         let label = if n.query.is_empty() {
-            fit_label("筛选作品或路径…", drawer.entry.width.saturating_sub(2)).into_owned()
+            fit_label(
+                "筛选文件、作品或路径…",
+                drawer.entry.width.saturating_sub(2),
+            )
+            .into_owned()
         } else {
             query
         };
