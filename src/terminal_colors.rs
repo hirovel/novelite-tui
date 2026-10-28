@@ -40,11 +40,4 @@ impl Workspace {
         crossterm::style::force_color_output(mode != ColorMode::Monochrome);
         mode
     }
-    pub fn color_mode_label(&self) -> &'static str {
-        match self.effective_color_mode() {
-            ColorMode::TrueColor => "真彩色",
-            ColorMode::Monochrome => "单色",
-            _ => "基础色",
-        }
-    }
 }

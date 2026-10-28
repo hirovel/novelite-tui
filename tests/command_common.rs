@@ -38,6 +38,7 @@ fn common_commands_are_compact_and_search_finds_registered_and_advanced_commands
             "browse-commands"
         ]
     );
+    let common_count = common.entries.len();
     w.handle_event(Event::Paste("custom-heading".into()))
         .unwrap();
     assert_eq!(w.palette().unwrap().entries[0].id, "custom-heading");
@@ -49,7 +50,7 @@ fn common_commands_are_compact_and_search_finds_registered_and_advanced_commands
     for _ in "reset-keys".chars() {
         press(&mut w, KeyCode::Backspace);
     }
-    assert_eq!(w.palette().unwrap().entries.len(), common.entries.len());
+    assert_eq!(w.palette().unwrap().entries.len(), common_count);
 }
 
 #[test]
@@ -91,12 +92,22 @@ fn browse_all_uses_ordinary_rendered_mouse_targets_including_small_terminals() {
             press(&mut w, KeyCode::Down);
         }
         t.draw(|f| w.render(f, "")).unwrap();
+        let selected_row = t
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .position(|c| c.symbol() == "▎")
+            .unwrap()
+            / width as usize;
         let i = t
             .backend()
             .buffer()
             .content
             .iter()
-            .position(|c| c.symbol() == "浏")
+            .enumerate()
+            .find(|(i, c)| *i / width as usize == selected_row && c.symbol() == "浏")
+            .map(|(i, _)| i)
             .unwrap();
         w.handle_event(Event::Mouse(MouseEvent {
             kind: MouseEventKind::Down(MouseButton::Left),

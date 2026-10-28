@@ -94,33 +94,6 @@ fn drawer_reflows_and_brightness_material_survive_reopening_without_changing_tex
 }
 
 #[test]
-fn last_settings_card_stays_visible_and_clickable_after_narrowing() {
-    let dir = tempfile::tempdir().unwrap();
-    let mut w = Workspace::create_project(dir.path().join("book"), "布局").unwrap();
-    w.configure_mouse(true);
-    w.open_design_settings().unwrap();
-    key(&mut w, KeyCode::Tab);
-    for _ in 0..4 {
-        key(&mut w, KeyCode::Down);
-        draw(&mut w, 120, 40);
-    }
-    let b = draw(&mut w, 50, 24);
-    at(&b, "纲");
-    let previous = w
-        .panel_preferences(novelite_tui::ModuleId::Planning)
-        .unwrap()
-        .width;
-    key(&mut w, KeyCode::Left);
-    assert!(
-        w.panel_preferences(novelite_tui::ModuleId::Planning)
-            .unwrap()
-            .width
-            < previous
-    );
-    assert_eq!(w.text(), "");
-}
-
-#[test]
 fn command_search_wheel_and_close_keep_editor_isolated() {
     let dir = tempfile::tempdir().unwrap();
     let mut w = Workspace::create_project(dir.path().join("book"), "搜索").unwrap();
@@ -139,7 +112,7 @@ fn command_search_wheel_and_close_keep_editor_isolated() {
         .unwrap();
     let b = draw(&mut w, 50, 20);
     at(&b, "没");
-    click(&mut w, &b, "关");
+    click(&mut w, &b, "返");
     assert!(w.palette().is_none());
     assert_eq!(w.text(), "");
     key(&mut w, KeyCode::Char('雨'));

@@ -57,7 +57,9 @@ fn bottom_entry_switches_modes_without_dimming_manuscript_or_leaving_old_footer(
     let body_style = before[point(&before, "独", 0)].clone();
     click(&mut w, point(&before, "命", 39));
     let commands = draw(&mut w, 120, 40, now);
-    assert_eq!(row(&commands, 39), "›搜索全部操作…");
+    let query_y = point(&commands, "›", 20).1;
+    assert_eq!(row(&commands, query_y), "›搜索全部操作…");
+    assert!(row(&commands, 39).ends_with("Esc返回正文"));
     click(&mut w, point(&commands, "设", 20));
     assert!(w.design_settings_open());
     assert!(w.palette().is_none());
@@ -157,7 +159,8 @@ fn settings_can_return_to_commands_by_existing_keys_and_resize_discards_stale_hi
     .unwrap();
     assert!(w.palette().is_some());
     let b = draw(&mut w, 80, 24, now);
-    assert_eq!(row(&b, 23), "›搜索全部操作…");
+    assert_eq!(row(&b, point(&b, "›", 12).1), "›搜索全部操作…");
+    assert!(row(&b, 23).ends_with("Esc返回正文"));
     key(&mut w, KeyCode::Down);
     // Selection is a motion scene, while typing immediately interrupts it.
     w.set_design_motion(true);

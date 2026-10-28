@@ -121,7 +121,7 @@ impl Workspace {
     }
     pub(crate) fn import_captures(&self, event: &Event) -> bool {
         self.import_active()
-            && self.palette().is_none()
+            && self.commands.palette_selection().is_none()
             && self.prompt.is_none()
             && !matches!(event, Event::Key(k) if k.code == KeyCode::F(1) || (k.code == KeyCode::Char('p') && k.modifiers == KeyModifiers::CONTROL))
             && self.commands.global_command(event).is_none()

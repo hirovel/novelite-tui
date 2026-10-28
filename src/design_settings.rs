@@ -349,7 +349,7 @@ impl Workspace {
             }
             return Ok(Some(Outcome::Continue));
         }
-        if self.palette().is_some()
+        if self.commands.palette_selection().is_some()
             && self.mouse_enabled()
             && let Event::Mouse(m) = event
             && matches!(
@@ -374,7 +374,7 @@ impl Workspace {
             && m.kind == MouseEventKind::Down(MouseButton::Left)
         {
             let pos = Position::new(m.column, m.row);
-            if self.palette().is_some() {
+            if self.commands.palette_selection().is_some() {
                 if self
                     .design_ui
                     .palette_close

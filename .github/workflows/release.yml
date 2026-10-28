@@ -38,10 +38,12 @@ jobs:
           test "$(uname -m)" = arm64
           python3 scripts/release.py check-version --tag "$REQUESTED_TAG" >> "$GITHUB_OUTPUT"
           test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$REQUESTED_TAG^{commit}")"
+      - name: Install Rust toolchain
+        run: rustup toolchain install 1.97.0 --profile minimal
+      - name: Test workspace behavior on Apple Silicon
+        run: rustup run 1.97.0 cargo test --locked --target aarch64-apple-darwin
       - name: Build locked release
-        run: |
-          rustup toolchain install 1.97.0 --profile minimal
-          rustup run 1.97.0 cargo build --locked --release --target aarch64-apple-darwin
+        run: rustup run 1.97.0 cargo build --locked --release --target aarch64-apple-darwin
       - name: Sign and verify the executable
         run: |
           binary=target/aarch64-apple-darwin/release/novelite-tui

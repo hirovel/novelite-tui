@@ -64,7 +64,7 @@ pub use search::ChapterSearch;
 mod storage;
 mod structure;
 mod structure_ui;
-pub use commands::{Command, CommandEntry, Palette};
+pub use commands::{Command, Palette};
 pub use project::{Chapter, Project, Recycled, Volume};
 pub use prompt::Prompt;
 pub use saving::SaveState;
@@ -497,28 +497,28 @@ impl Workspace {
             }
             return Ok(Some(Outcome::Continue));
         }
-        if self.book_search_focused() && self.palette().is_none() {
+        if self.book_search_focused() && self.commands.palette_selection().is_none() {
             use crossterm::event::{Event, KeyCode, KeyModifiers};
             let command_key = matches!(&event, Event::Key(key) if matches!(key.code, KeyCode::F(_)) || key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER));
             if !command_key {
                 return self.book_search_event(event);
             }
         }
-        if self.navigator.is_some() && self.palette().is_none() {
+        if self.navigator.is_some() && self.commands.palette_selection().is_none() {
             use crossterm::event::{Event, KeyCode, KeyModifiers};
             let command_key = matches!(&event, Event::Key(key) if matches!(key.code, KeyCode::F(_)) || key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER));
             if !command_key || self.recent_record_action(&event) {
                 return self.navigation_event(event);
             }
         }
-        if self.history_preview.is_some() && self.palette().is_none() {
+        if self.history_preview.is_some() && self.commands.palette_selection().is_none() {
             use crossterm::event::{Event, KeyCode, KeyModifiers};
             let command_key = matches!(&event, Event::Key(key) if matches!(key.code, KeyCode::F(_)) || key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SUPER));
             if !command_key {
                 return self.history_preview_event(event).map(Some);
             }
         }
-        if self.palette().is_none()
+        if self.commands.palette_selection().is_none()
             && self.chapter_search().is_some()
             && matches!(&event, crossterm::event::Event::Key(key) if key.code == crossterm::event::KeyCode::Esc && key.kind != crossterm::event::KeyEventKind::Release)
         {
@@ -533,7 +533,7 @@ impl Workspace {
         self.typing_event(event)
     }
 
-    pub fn palette(&self) -> Option<Palette> {
+    pub fn palette(&self) -> Option<Palette<'_>> {
         self.commands.palette()
     }
     pub fn prompt(&self) -> Option<&Prompt> {
@@ -618,42 +618,6 @@ impl Workspace {
         self.document.selected_text()
     }
 
-    fn save(&mut self) -> io::Result<()> {
-        self.finish_save(true)?;
-        if !self.saving.uncertain {
-            self.check_external()?;
-        }
-        self.ensure_no_conflict()?;
-        if self.is_dirty() {
-            self.request_save()?;
-            self.finish_save(true)?;
-        }
-        self.remember_location()
-    }
-
-    pub fn request_save(&mut self) -> io::Result<()> {
-        if !self.is_dirty() || self.saving.running() {
-            return Ok(());
-        }
-        self.require_writable()?;
-        self.ensure_no_conflict()?;
-        let target = self.project.as_ref().map_or_else(
-            || saving::Target::File {
-                path: self.path.clone(),
-                new: self.document.new_file,
-            },
-            |store| saving::Target::Project(Box::new(store.clone())),
-        );
-        let metadata = self.project.as_ref().map_or(0, |store| store.revision);
-        self.saving.request(
-            target,
-            self.document.text.clone(),
-            self.document.revision,
-            metadata,
-            self.document.disk,
-            self.external.manifest,
-        )
-    }
     /// Save a complete copy to a new destination, then continue editing that copy.
     pub fn save_as(&mut self, destination: impl AsRef<Path>) -> io::Result<()> {
         let destination = if self.project.is_some() {
@@ -698,33 +662,6 @@ impl Workspace {
         }
         Ok(())
     }
-    fn finish_save(&mut self, wait: bool) -> io::Result<()> {
-        let completed = self.saving.complete(wait).inspect_err(|e| {
-            if e.kind() == io::ErrorKind::AlreadyExists {
-                self.saved_conflict();
-            }
-        })?;
-        if let Some(saving::Saved {
-            revision,
-            metadata,
-            disk,
-            manifest,
-        }) = completed
-        {
-            self.document.disk = disk;
-            self.external.manifest = manifest;
-            self.document.saved_revision = revision;
-            self.document.new_file = false;
-            if let Some(store) = &mut self.project {
-                store.dirty = store.revision != metadata;
-                store.pending.clear();
-            }
-        }
-        Ok(())
-    }
-    pub fn poll_save(&mut self) -> io::Result<()> {
-        self.finish_save(false)
-    }
     pub fn tick(&mut self, now: std::time::Instant) -> io::Result<()> {
         self.poll_import()?;
         self.poll_export()?;
@@ -739,24 +676,6 @@ impl Workspace {
         }
         self.history_tick()
     }
-    pub fn save_state(&self) -> SaveState {
-        if let Some(conflict) = self.external_conflict() {
-            SaveState::Conflict(conflict.message.clone())
-        } else if self.is_read_only() {
-            SaveState::ReadOnly
-        } else if let Some(error) = &self.saving.error {
-            SaveState::Failed(error.clone())
-        } else if self.saving.running() {
-            SaveState::Saving
-        } else if self.is_dirty() {
-            SaveState::Pending
-        } else if self.saving.completed {
-            SaveState::Saved
-        } else {
-            SaveState::Unchanged
-        }
-    }
-
     pub fn text(&self) -> &str {
         &self.document.text
     }
@@ -774,12 +693,6 @@ impl Workspace {
         } else {
             Ok(())
         }
-    }
-    pub fn is_dirty(&self) -> bool {
-        self.saving.uncertain
-            || self.document.new_file
-            || self.document.revision != self.document.saved_revision
-            || self.project.as_ref().is_some_and(|store| store.dirty)
     }
     pub fn cursor(&self) -> usize {
         self.document.cursor

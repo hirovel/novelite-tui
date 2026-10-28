@@ -56,7 +56,7 @@ impl Workspace {
         }
         if !self.mouse.enabled
             || self.prompt.is_some()
-            || self.palette().is_some()
+            || self.commands.palette_selection().is_some()
             || self.history_preview.is_some()
             || self
                 .navigator

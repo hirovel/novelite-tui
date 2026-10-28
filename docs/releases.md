@@ -6,7 +6,7 @@ Novelite TUI uses a native Apple Silicon executable distributed through `hirovel
 
 1. Update the package version in `Cargo.toml` and `Cargo.lock`, review the source, and run the local checks. Commit only product changes.
 2. Create the matching stable tag, such as `v0.1.0`, and push that tag. **Apple Silicon release** runs on a native M1 runner with Rust 1.97.0 and the locked dependencies.
-3. The workflow checks the tag/source version, signs the executable ad hoc, verifies its architecture, deployment target and system-only dynamic dependencies, and installs the actual archive in a temporary Homebrew tap. Only successful package and Homebrew tests proceed to a public Release containing the archive, `SHA256SUMS`, and the generated formula.
+3. The workflow checks the tag/source version, runs the existing workspace behavior tests on Apple Silicon, signs the executable ad hoc, verifies its architecture, deployment target and system-only dynamic dependencies, and installs the actual archive in a temporary Homebrew tap. Only successful package and Homebrew tests proceed to a public Release containing the archive, `SHA256SUMS`, and the generated formula.
 4. With GitHub CLI signed in locally, update an existing checkout of the tap:
 
    ```sh

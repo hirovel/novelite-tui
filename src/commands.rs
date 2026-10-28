@@ -19,14 +19,9 @@ pub struct Command {
     pub title: String,
     pub run: fn(&mut Workspace) -> io::Result<Outcome>,
 }
-pub struct CommandEntry {
-    pub id: String,
-    pub title: String,
-    pub shortcuts: String,
-}
-pub struct Palette {
-    pub query: String,
-    pub entries: Vec<CommandEntry>,
+pub struct Palette<'a> {
+    pub query: &'a str,
+    pub entries: Vec<&'a Command>,
     pub selected: usize,
 }
 pub(crate) enum CommandEvent {
@@ -215,38 +210,54 @@ impl Commands {
     pub fn keymap_path(&self) -> Option<&std::path::Path> {
         self.keymap.path()
     }
-    pub fn palette(&self) -> Option<Palette> {
+    /// Borrow titles for painting; derive common order and exact-id priority
+    /// directly instead of cloning and sorting every command on every frame.
+    pub fn palette(&self) -> Option<Palette<'_>> {
         let query = self.query.as_ref()?;
         let lowered = query.to_lowercase();
         let common_only = query.is_empty() && !self.browsing_all;
-        let mut entries: Vec<_> = self
-            .entries
-            .iter()
-            .filter(|command| self.active(&command.id))
-            .filter(|command| !common_only || COMMON_COMMANDS.contains(&command.id.as_str()))
-            .filter(|command| {
-                !self.browsing_all || !query.is_empty() || command.id != "browse-commands"
-            })
-            .filter(|command| {
-                command.id.contains(&lowered) || command.title.to_lowercase().contains(&lowered)
-            })
-            .map(|command| CommandEntry {
-                id: command.id.clone(),
-                title: command.title.clone(),
-                shortcuts: self.keymap.shortcuts(&command.id),
-            })
-            .collect();
-        if common_only {
-            entries.sort_by_key(|entry| COMMON_COMMANDS.iter().position(|id| *id == entry.id));
+        let matches = |command: &&Command| {
+            self.active(&command.id)
+                && (!self.browsing_all || !query.is_empty() || command.id != "browse-commands")
+                && (command.id.contains(&lowered)
+                    || command.title.to_lowercase().contains(&lowered))
+        };
+        let entries = if common_only {
+            COMMON_COMMANDS
+                .iter()
+                .filter_map(|id| self.entries.iter().find(|command| command.id == *id))
+                .filter(matches)
+                .collect()
         } else {
-            entries.sort_by_key(|entry| entry.id != lowered);
-        }
-        let selected = self.selected.min(entries.len().saturating_sub(1));
+            self.entries
+                .iter()
+                .filter(|command| command.id == lowered)
+                .chain(self.entries.iter().filter(|command| command.id != lowered))
+                .filter(matches)
+                .collect::<Vec<_>>()
+        };
         Some(Palette {
-            query: query.clone(),
+            query,
+            selected: self.selected.min(entries.len().saturating_sub(1)),
             entries,
-            selected,
         })
+    }
+
+    pub(crate) fn description(&self, id: &str) -> &'static str {
+        match id {
+            "open-project" => "打开本地文稿或作品文件夹，继续写作。",
+            "save" => "将当前修改保存到磁盘，保留正文与光标位置。",
+            "find" => "查找当前章节中的文字，查看匹配位置。",
+            "design-settings" => "调整排版、布局与写作偏好。字体与光标外观沿用终端。",
+            "recent-projects" => "从最近文件与作品继续写作。移除记录不会删除稿件。",
+            "save-as" => "把当前文稿保存到新路径，保留已有文件。",
+            "chapters" => "浏览作品的卷与章节，在当前窗格打开所选章节。",
+            "quit" => "保存当前修改后退出；保存失败时保留工作区。",
+            "browse-commands" => "浏览全部可用操作，也可输入名称或命令 ID 筛选。",
+            "undo" => "撤销当前章节的最近一次编辑。",
+            "redo" => "重做当前章节已撤销的编辑。",
+            _ => "在当前工作区执行所选操作。Esc 返回正文。",
+        }
     }
 
     pub(crate) fn query_view(&mut self, width: u16) -> (String, u16) {
@@ -280,9 +291,9 @@ impl Commands {
             match key.code {
                 KeyCode::Enter => {
                     let palette = self.palette().unwrap();
-                    if let Some(entry) = palette.entries.get(palette.selected) {
+                    if let Some(id) = palette.entries.get(palette.selected).map(|c| c.id.clone()) {
                         self.close_palette();
-                        return CommandEvent::Execute(entry.id.clone());
+                        return CommandEvent::Execute(id);
                     }
                 }
                 KeyCode::Up => self.selected = self.selected.saturating_sub(1),

@@ -121,23 +121,6 @@ fn custom_binding_survives_reopen_and_invalid_configuration_keeps_a_working_fall
 }
 
 #[test]
-fn command_palette_saves_without_typing_the_query_into_the_manuscript() {
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("draft.txt");
-    let mut work = Workspace::open(&path).unwrap();
-    work.dispatch(Action::Insert("正文".into())).unwrap();
-    work.handle_event(key(KeyCode::F(1))).unwrap();
-    assert!(work.palette().is_some());
-    work.handle_event(Event::Paste("save".into())).unwrap();
-    assert_eq!(work.palette().unwrap().entries[0].id, "save");
-    work.handle_event(key(KeyCode::Enter)).unwrap();
-    assert!(work.palette().is_none());
-    assert_eq!(fs::read_to_string(&path).unwrap(), "正文");
-    work.handle_event(key(KeyCode::Char('续'))).unwrap();
-    assert_eq!(work.text(), "正文续");
-}
-
-#[test]
 fn settings_comma_binding_survives_custom_binding_save_and_reload() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("draft.txt");

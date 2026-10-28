@@ -50,7 +50,7 @@ impl Workspace {
             || self.navigation_tool_open()
     }
     fn navigation_topmost(&self) -> bool {
-        self.palette().is_none()
+        self.commands.palette_selection().is_none()
             && !self.design_ui.open
             && self.prompt.is_none()
             && !self.import_active()
