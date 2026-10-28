@@ -43,6 +43,31 @@ fn raw_markdown_exports_the_requested_revision_without_saving_or_switching_the_d
     assert!(w.export_message().unwrap().contains("已导出"));
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+fn macos_system_temp_alias_allows_export_but_user_directory_links_remain_rejected() {
+    let dir = tempfile::Builder::new().tempdir_in("/tmp").unwrap();
+    let mut w = Workspace::open(dir.path().join("draft.md")).unwrap();
+    w.dispatch(Action::Insert("草稿".into())).unwrap();
+    let target = dir.path().join("export.md");
+    export(&mut w, ExportFormat::ChapterMarkdown, &target).unwrap();
+    assert_eq!(std::fs::read_to_string(target).unwrap(), "草稿");
+
+    let output = dir.path().join("output");
+    std::fs::create_dir(&output).unwrap();
+    let linked_output = dir.path().join("linked-output");
+    std::os::unix::fs::symlink(&output, &linked_output).unwrap();
+    assert!(
+        w.export_manuscript(
+            ExportFormat::ChapterMarkdown,
+            linked_output.join("blocked.md")
+        )
+        .is_err()
+    );
+    assert!(!output.join("blocked.md").exists());
+    assert_eq!(w.text(), "草稿");
+}
+
 #[test]
 fn text_export_matches_desktop_title_rules_without_reformatting_the_body() {
     let dir = tempfile::tempdir().unwrap();

@@ -46,9 +46,30 @@ pub(crate) fn destination(path: &Path) -> io::Result<std::path::PathBuf> {
 pub(crate) fn reject_link_chain(path: &Path) -> io::Result<()> {
     let path = std::path::absolute(path)?;
     for ancestor in path.ancestors() {
+        #[cfg(target_os = "macos")]
+        if macos_system_alias(ancestor) {
+            continue;
+        }
         reject_link(ancestor)?;
     }
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn macos_system_alias(path: &Path) -> bool {
+    // macOS exposes these system directories through root-level aliases. Do not
+    // canonicalize the user path before checking its other ancestors for links.
+    let name = match path.to_str() {
+        Some("/var") => "var",
+        Some("/tmp") => "tmp",
+        Some("/etc") => "etc",
+        _ => return false,
+    };
+    let target = Path::new("/private").join(name);
+    fs::read_link(path).is_ok_and(|link| {
+        (link == target || link == Path::new("private").join(name))
+            && fs::canonicalize(path).is_ok_and(|resolved| resolved == target)
+    })
 }
 
 pub(crate) fn reject_link(path: &Path) -> io::Result<fs::Metadata> {
